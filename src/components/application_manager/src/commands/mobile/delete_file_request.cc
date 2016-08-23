@@ -80,7 +80,11 @@ void DeleteFileRequest::Run() {
   full_file_path += sync_file_name;
 
   if (file_system::FileExists(full_file_path)) {
+#if defined(OS_WIN32) || defined(OS_WINCE)
+    if (file_system::DeleteFileWindows(full_file_path)) {
+#else
     if (file_system::DeleteFile(full_file_path)) {
+#endif
       const AppFile* file = application->GetFile(full_file_path);
       if (file) {
         SendFileRemovedNotification(file);

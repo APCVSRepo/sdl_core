@@ -30,10 +30,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef OS_WIN32
 #include <apr_time.h>
 #include <log4cxx/spi/loggingevent.h>
-#endif
 
 #include "utils/auto_trace.h"
 #include "utils/push_log.h"
@@ -44,8 +42,8 @@ AutoTrace::AutoTrace(
   log4cxx::LoggerPtr logger,
   const log4cxx::spi::LocationInfo& location) :
   logger_(logger), location_(location) {
-  if (logger_->isTraceEnabled()) {
-#ifndef OS_WIN32
+  if (logger::logs_enabled() &&
+      logger_->isTraceEnabled()) {
     push_log(logger_,
              ::log4cxx::Level::getTrace(),
              "Enter",
@@ -53,13 +51,12 @@ AutoTrace::AutoTrace(
              location_,
              ::log4cxx::spi::LoggingEvent::getCurrentThreadName()
     );
-#endif
   }
 }
 
 AutoTrace::~AutoTrace() {
-	if (logger_->isTraceEnabled()) {
-#ifndef OS_WIN32
+  if (logger::logs_enabled() &&
+      logger_->isTraceEnabled()) {
     push_log(logger_,
              ::log4cxx::Level::getTrace(),
              "Exit",
@@ -67,7 +64,6 @@ AutoTrace::~AutoTrace() {
              location_, // the location corresponds rather to creation of autotrace object than to deletion
              ::log4cxx::spi::LoggingEvent::getCurrentThreadName()
     );
-#endif
   }
 }
 

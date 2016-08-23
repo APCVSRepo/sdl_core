@@ -29,9 +29,6 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifdef MODIFY_FUNCTION_SIGN
-#include <global_first.h>
-#endif
 #include "utils/threads/thread_validator.h"
 
 #include "utils/logger.h"
@@ -49,60 +46,87 @@ SingleThreadSimpleValidator::~SingleThreadSimpleValidator() {
 }
 
 void SingleThreadSimpleValidator::AssertRunningOnCreationThread() const {
-#ifdef OS_WIN32
-	Thread::Id current_id = Thread::CurrentId();
-#else
-	PlatformThreadHandle current_id = Thread::CurrentId();
-#endif
-	if (creation_thread_id_ != current_id) {
-#ifdef OS_WIN32
-		LOG4CXX_ERROR(logger_, "Single-threaded object created at thread ");
-#else
-		LOG4CXX_ERROR(logger_, "Single-threaded object created at thread "
-			<< creation_thread_id_
-			<<" is accessed from thread "
-			<< current_id
+  PlatformThreadHandle current_id = Thread::CurrentId();
+#if defined(OS_WIN32) || defined(OS_WINCE)
+  if (creation_thread_id_.p != current_id.p) {
 #ifdef BACKTRACE_SUPPORT
-			<< "\n"
-			<< utils::Backtrace()
+    LOG4CXX_ERROR(logger_, "Single-threaded object created at thread "
+                          << creation_thread_id_.p
+                          <<" is accessed from thread "
+                          << current_id.p
+                          << std::endl
+                          << utils::Backtrace()
+                             );
+#else
+    LOG4CXX_ERROR(logger_, "Single-threaded object created at thread "
+                          << creation_thread_id_.p
+                          <<" is accessed from thread "
+                          << current_id.p);
 #endif
-			);
+  }
+#else
+  if (creation_thread_id_ != current_id) {
+    LOG4CXX_ERROR(logger_, "Single-threaded object created at thread "
+                          << creation_thread_id_
+                          <<" is accessed from thread "
+                          << current_id
+#ifdef BACKTRACE_SUPPORT
+                          << "\n"
+                          << utils::Backtrace()
 #endif
-	}
+    );
+  }
+#endif
+}
+
+PlatformThreadHandle SingleThreadSimpleValidator::creation_thread_id() const
+{
+  return creation_thread_id_;
 }
 
 
 SingleThreadValidator::SingleThreadValidator()
-    : owning_thread_id_(Thread::CurrentId()){
+    : owning_thread_id_(Thread::CurrentId()) {
 }
 
 SingleThreadValidator::~SingleThreadValidator() {
 }
 
-void SingleThreadValidator::PassToThread(Thread::Id thread_id) const {
+void SingleThreadValidator::PassToThread(PlatformThreadHandle thread_id) const {
   owning_thread_id_ = thread_id;
 }
 
 void SingleThreadValidator::AssertRunningOnValidThread() const {
-#ifdef OS_WIN32
-  Thread::Id current_id = Thread::CurrentId();
-#else
-	PlatformThreadHandle current_id = Thread::CurrentId();
-#endif
-	if (owning_thread_id_ != current_id) {
-#ifdef OS_WIN32
-		LOG4CXX_ERROR(logger_, "Single-threaded object owned by thread ");
-#else
-		LOG4CXX_ERROR(logger_, "Single-threaded object owned by thread "
-			<< owning_thread_id_
-			<< " is accessed from thread "
-			<< current_id << "\n"
+  PlatformThreadHandle current_id = Thread::CurrentId();
+#if defined(OS_WIN32) || defined(OS_WINCE)
+  if (owning_thread_id_.p != current_id.p) {
 #ifdef BACKTRACE_SUPPORT
-			<< utils::Backtrace()
+    LOG4CXX_ERROR(logger_, "Single-threaded object owned by thread "
+                         << owning_thread_id_.p
+                         << " is accessed from thread "
+                         << current_id.p << std::endl
+                         << utils::Backtrace()
+                            );
+#else
+    LOG4CXX_ERROR(logger_, "Single-threaded object owned by thread "
+                         << owning_thread_id_.p
+                         << " is accessed from thread "
+                         << current_id.p);
 #endif
-			);
+
+  }
+#else
+  if (owning_thread_id_ != current_id) {
+    LOG4CXX_ERROR(logger_, "Single-threaded object owned by thread "
+                         << owning_thread_id_
+                         << " is accessed from thread "
+                         << current_id << "\n"
+#ifdef BACKTRACE_SUPPORT
+                         << utils::Backtrace()
 #endif
-	}
+                         );
+  }
+#endif
 }
 
 

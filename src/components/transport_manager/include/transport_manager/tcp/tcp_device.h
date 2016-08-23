@@ -36,10 +36,7 @@
 #ifndef SRC_COMPONENTS_TRANSPORT_MANAGER_INCLUDE_TRANSPORT_MANAGER_TCP_TCP_DEVICE_H_
 #define SRC_COMPONENTS_TRANSPORT_MANAGER_INCLUDE_TRANSPORT_MANAGER_TCP_TCP_DEVICE_H_
 
-#include "transport_manager/transport_adapter/device.h"
-
-#include <map>
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include "pthread.h"
 #include <stdint.h>
 #elif defined(OS_MAC)
@@ -54,9 +51,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #endif
+
+#include <map>
+#include <string>
 #include "utils/lock.h"
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 typedef __int32 in_addr_t;
 #endif
 #include "transport_manager/transport_adapter/device.h"
@@ -132,7 +132,7 @@ class TcpDevice : public Device {
    *
    * @return Application's port No.
    */
-  int GetApplicationPort(const ApplicationHandle app_handle) const;
+  virtual int GetApplicationPort(const ApplicationHandle app_handle) const;
 
   /**
    * @brief Return address.

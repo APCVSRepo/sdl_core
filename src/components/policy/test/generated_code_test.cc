@@ -35,19 +35,24 @@
 
 #include "json/reader.h"
 #include "json/value.h"
-#include "./enums.h"
-#include "./types.h"
+#include "table_struct/enums.h"
+#include "table_struct/types.h"
 #include "rpc_base/gtest_support.h"
-
+#ifdef OS_WINCE
+#include "utils/global.h"
+#endif
 using rpc::policy_table_interface_base::Table;
 
 namespace test {
 namespace components {
 namespace policy {
 
-TEST(PolicyGeneratedCodeTest, DISABLED_TestValidPTPreloadJsonIsValid) {
-  // TODO(AGaliuzov) APPLINK-10657 neet to enable this tests
+TEST(PolicyGeneratedCodeTest, TestValidPTPreloadJsonIsValid) {
+#ifdef OS_WINCE
+  std::ifstream json_file(Global::RelativePathToAbsPath("sdl_preloaded_pt.json").c_str());
+#else
   std::ifstream json_file("sdl_preloaded_pt.json");
+#endif
   ASSERT_TRUE(json_file.is_open());
   Json::Value valid_table;
   Json::Reader reader;
@@ -57,9 +62,12 @@ TEST(PolicyGeneratedCodeTest, DISABLED_TestValidPTPreloadJsonIsValid) {
   ASSERT_RPCTYPE_VALID(table);
 }
 
-TEST(PolicyGeneratedCodeTest, DISABLED_TestValidPTUpdateJsonIsValid) {
-  // TODO(AGaliuzov) APPLINK-10657 neet to enable this tests
+TEST(PolicyGeneratedCodeTest, TestValidPTUpdateJsonIsValid) {
+#ifdef OS_WINCE
+  std::ifstream json_file(Global::RelativePathToAbsPath("valid_sdl_pt_update.json").c_str());
+#else
   std::ifstream json_file("valid_sdl_pt_update.json");
+#endif
   ASSERT_TRUE(json_file.is_open());
   Json::Value valid_table;
   Json::Reader reader;

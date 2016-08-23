@@ -32,8 +32,10 @@
 
 #include "transport_manager/tcp/tcp_transport_adapter.h"
 
-#ifdef OS_WIN32
-#include <WinSock2.h>
+#if defined(OS_WIN32) || defined(OS_WINCE)
+#ifndef _WINSOCKAPI_
+#include <winsock2.h>
+#endif
 #elif defined(OS_MAC)
 #include <arpa/inet.h>
 #endif
@@ -54,29 +56,17 @@
 #include "transport_manager/tcp/tcp_connection_factory.h"
 #include "transport_manager/tcp/tcp_device.h"
 
-#ifdef MODIFY_FUNCTION_SIGN
-#include "config_profile/profile.h"
-#endif
-
-#ifdef AVAHI_SUPPORT
-#include "transport_manager/tcp/dnssd_service_browser.h"
-#endif
-
 namespace transport_manager {
 namespace transport_adapter {
 
-CREATE_LOGGERPTR_GLOBAL(logger_, "TransportAdapterImpl")
+CREATE_LOGGERPTR_GLOBAL(logger_, "TransportManager")
 
-TcpTransportAdapter::TcpTransportAdapter(const uint16_t port)
-    : TransportAdapterImpl(
-#ifdef AVAHI_SUPPORT
-                           new DnssdServiceBrowser(this),
-#else
-                           NULL,
-#endif
+TcpTransportAdapter::TcpTransportAdapter(const uint16_t port,
+                                         resumption::LastState& last_state)
+    : TransportAdapterImpl(NULL,
                            new TcpConnectionFactory(this),
-                           new TcpClientListener(this, port, true)) {
-}
+                           new TcpClientListener(this, port, true),
+                           last_state) {}
 
 TcpTransportAdapter::~TcpTransportAdapter() {
 }
@@ -115,11 +105,7 @@ void TcpTransportAdapter::Store() const {
         if (port != -1) {  // don't want to store incoming applications
           Json::Value application_dictionary;
           char port_record[12];
-		  #ifdef OS_WIN32
-		  sprintf(port_record, "%d", port);
-		  #else
           snprintf(port_record, sizeof(port_record), "%d", port);
-		  #endif
           application_dictionary["port"] = std::string(port_record);
           applications_dictionary.append(application_dictionary);
         }
@@ -131,15 +117,15 @@ void TcpTransportAdapter::Store() const {
     }
   }
   tcp_adapter_dictionary["devices"] = devices_dictionary;
-  Json::Value& dictionary = resumption::LastState::instance()->dictionary;
+  Json::Value& dictionary = last_state().dictionary;
   dictionary["TransportManager"]["TcpAdapter"] = tcp_adapter_dictionary;
 }
 
 bool TcpTransportAdapter::Restore() {
   LOG4CXX_AUTO_TRACE(logger_);
   bool errors_occurred = false;
-  const Json::Value tcp_adapter_dictionary = resumption::LastState::instance()
-      ->dictionary["TransportManager"]["TcpAdapter"];
+  const Json::Value tcp_adapter_dictionary =
+      last_state().dictionary["TransportManager"]["TcpAdapter"];
   const Json::Value devices_dictionary = tcp_adapter_dictionary["devices"];
   for (Json::Value::const_iterator i = devices_dictionary.begin();
       i != devices_dictionary.end(); ++i) {

@@ -33,10 +33,14 @@
 #define SRC_COMPONENTS_POLICY_TEST_INCLUDE_DRIVER_DBMS_H_
 
 #ifdef __QNX__
-#  include <qdb/qdb.h>
+#include <qdb/qdb.h>
 #else  // __QNX__
-#  include <sqlite3.h>
+#include <sqlite3.h>
 #endif  // __QNX__
+
+#ifdef OS_WINCE
+#include "utils/file_system.h"
+#endif
 
 namespace test {
 namespace components {
@@ -45,8 +49,7 @@ namespace policy {
 #ifdef __QNX__
 class DBMS {
  public:
-  explicit DBMS(std::string db_name) : db_name_(db_name), conn_(0) {
-  }
+  explicit DBMS(std::string db_name) : db_name_(db_name), conn_(0) {}
   ~DBMS() {
     Close();
   }
@@ -61,7 +64,7 @@ class DBMS {
     return -1 != qdb_statement(conn_, query);
   }
   int FetchOneInt(const char* query) {
-    int stmt = qdb_stmt_init(conn_, query, strlen(query)+1);
+    int stmt = qdb_stmt_init(conn_, query, strlen(query) + 1);
     qdb_stmt_exec(conn_, stmt, NULL, 0);
     qdb_result_t* res = qdb_getresult(conn_);
     void* ret = qdb_cell(res, 0, 0);
@@ -73,7 +76,7 @@ class DBMS {
     return value;
   }
   double FetchOneDouble(const char* query) {
-    int stmt = qdb_stmt_init(conn_, query, strlen(query)+1);
+    int stmt = qdb_stmt_init(conn_, query, strlen(query) + 1);
     qdb_stmt_exec(conn_, stmt, NULL, 0);
     qdb_result_t* res = qdb_getresult(conn_);
     void* ret = qdb_cell(res, 0, 0);
@@ -86,7 +89,7 @@ class DBMS {
     return value;
   }
   std::string FetchOneString(const char* query) {
-    int stmt = qdb_stmt_init(conn_, query, strlen(query)+1);
+    int stmt = qdb_stmt_init(conn_, query, strlen(query) + 1);
     qdb_stmt_exec(conn_, stmt, NULL, 0);
     qdb_result_t* res = qdb_getresult(conn_);
     void* ret = qdb_cell(res, 0, 0);
@@ -104,20 +107,31 @@ class DBMS {
   qdb_hdl_t* conn_;
 };
 
-#else  // __QNX__
+#else   // __QNX__
 class DBMS {
  public:
-  explicit DBMS(std::string file_name) : file_name_(file_name), conn_(0) {
-  }
+  explicit DBMS(std::string file_name) : file_name_(file_name), conn_(0) {}
   ~DBMS() {
     Close();
   }
   bool Open() {
+#ifdef OS_WINCE
+    std::string tmp = file_name_;
+    if (tmp[0] != '\\' && tmp[0] != '/') {
+      tmp = Global::RelativePathToAbsPath(tmp);
+    }
+    return SQLITE_OK == sqlite3_open(tmp.c_str(), &conn_);
+#else
     return SQLITE_OK == sqlite3_open(file_name_.c_str(), &conn_);
+#endif
   }
   void Close() {
     sqlite3_close(conn_);
+#ifdef OS_WINCE
+    file_system::DeleteFileWindows(file_name_);
+#else
     remove(file_name_.c_str());
+#endif
   }
   bool Exec(const char* query) {
     return SQLITE_OK == sqlite3_exec(conn_, query, NULL, NULL, NULL);

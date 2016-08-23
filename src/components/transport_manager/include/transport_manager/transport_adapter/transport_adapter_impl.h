@@ -38,18 +38,20 @@
 #include <map>
 #include <memory>
 #include <string>
-#ifdef OS_WIN32
+#if defined(OS_WINCE) || defined(OS_WIN32)
 #include "pthread.h"
 #endif
 #include "utils/lock.h"
 #include "utils/rwlock.h"
+
 #include "transport_manager/transport_adapter/transport_adapter.h"
 #include "transport_manager/transport_adapter/transport_adapter_controller.h"
 #include "transport_manager/transport_adapter/connection.h"
+#include "resumption/last_state.h"
 
-#ifdef TIME_TESTER
-#include "transport_manager/time_metric_observer.h"
-#endif  // TIME_TESTER
+#ifdef TELEMETRY_MONITOR
+#include "transport_manager/telemetry_observer.h"
+#endif  // TELEMETRY_MONITOR
 
 namespace transport_manager {
 
@@ -77,7 +79,8 @@ class TransportAdapterImpl : public TransportAdapter,
    **/
   TransportAdapterImpl(DeviceScanner* device_scanner,
                        ServerConnectionFactory* server_connection_factory,
-                       ClientConnectionListener* client_connection_listener);
+                       ClientConnectionListener* client_connection_listener,
+                       resumption::LastState& last_state);
 
   /**
    * @brief Destructor.
@@ -399,21 +402,21 @@ class TransportAdapterImpl : public TransportAdapter,
    */
   virtual std::string GetConnectionType() const;
 
-#ifdef TIME_TESTER
+#ifdef TELEMETRY_MONITOR
   /**
    * @brief Setup observer for time metric.
    *
    * @param observer - pointer to observer
    */
-  void SetTimeMetricObserver(TMMetricObserver* observer);
+  void SetTelemetryObserver(TMTelemetryObserver* observer);
 
   /**
    * @brief Return Time metric observer
    *
    * @param return pointer to Time metric observer
    */
-  virtual TMMetricObserver* GetTimeMetricObserver();
-#endif  // TIME_TESTER
+  virtual TMTelemetryObserver* GetTelemetryObserver();
+#endif  // TELEMETRY_MONITOR
 
  protected:
   /**
@@ -448,7 +451,7 @@ class TransportAdapterImpl : public TransportAdapter,
    *
    * @return pointer to the connection.
    */
-  ConnectionSPtr FindEstablishedConnection(const DeviceUID& device_handle,
+  virtual ConnectionSPtr FindEstablishedConnection(const DeviceUID& device_handle,
                                            const ApplicationHandle& app_handle) const;
 
  private:
@@ -530,12 +533,16 @@ class TransportAdapterImpl : public TransportAdapter,
   mutable sync_primitives::RWLock connections_lock_;
 
  protected:
-#ifdef TIME_TESTER
+#ifdef TELEMETRY_MONITOR
   /**
    * @brief Pointer to time metric observer
    */
-  TMMetricObserver* metric_observer_;
-#endif  // TIME_TESTER
+  TMTelemetryObserver* metric_observer_;
+#endif  // TELEMETRY_MONITOR
+
+  resumption::LastState& last_state() const {
+      return last_state_;
+  }
 
   /**
    * @brief Pointer to the device scanner.
@@ -551,6 +558,8 @@ class TransportAdapterImpl : public TransportAdapter,
    * @brief Pointer to the factory of connections initiated from client.
    */
   ClientConnectionListener* client_connection_listener_;
+
+  resumption::LastState& last_state_;
 };
 
 }  // namespace transport_adapter

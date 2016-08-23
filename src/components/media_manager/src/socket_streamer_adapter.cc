@@ -29,7 +29,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-
+#if !defined(OS_WIN32)&&!defined(OS_WINCE)
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/select.h>
@@ -37,6 +37,18 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+#else
+#include <WinSock2.h>
+#include <ws2tcpip.h>
+#ifndef close
+#define close closesocket
+#endif
+#ifndef ssize_t
+#define ssize_t int
+#endif
+#define MSG_NOSIGNAL 0
+#define SHUT_RDWR 2
+#endif
 #include "utils/logger.h"
 #include "media_manager/socket_streamer_adapter.h"
 
@@ -46,7 +58,7 @@ CREATE_LOGGERPTR_GLOBAL(logger, "SocketStreamerAdapter")
 
 SocketStreamerAdapter::SocketStreamerAdapter(
     const std::string& ip,
-    int32_t port,
+    const int32_t port,
     const std::string& header)
   : StreamerAdapter(new SocketStreamer(this, ip, port, header)) {
 }
@@ -57,7 +69,7 @@ SocketStreamerAdapter::~SocketStreamerAdapter() {
 SocketStreamerAdapter::SocketStreamer::SocketStreamer(
     SocketStreamerAdapter* const adapter,
     const std::string& ip,
-    int32_t port,
+    const int32_t port,
     const std::string& header)
   : Streamer(adapter),
     ip_(ip),
@@ -80,14 +92,23 @@ bool SocketStreamerAdapter::SocketStreamer::Connect() {
   }
 
   int32_t optval = 1;
+#if defined(OS_WIN32)||defined(OS_WINCE)
   if (-1 == setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEADDR,
-                       &optval, sizeof optval)) {
+	  (const char*)&optval, sizeof(optval))) {
+#else
+  if (-1 == setsockopt(socket_fd_, SOL_SOCKET, SO_REUSEADDR,
+                       &optval, sizeof(optval))) {
+#endif
     LOG4CXX_ERROR(logger, "Unable to set sockopt");
     return false;
   }
 
   struct sockaddr_in serv_addr_ = { 0 };
+#ifdef OS_WINCE
+  serv_addr_.sin_addr.s_addr = ADDR_ANY;
+#else
   serv_addr_.sin_addr.s_addr = inet_addr(ip_.c_str());
+#endif
   serv_addr_.sin_family = AF_INET;
   serv_addr_.sin_port = htons(port_);
   if (-1 == bind(socket_fd_,
@@ -101,13 +122,19 @@ bool SocketStreamerAdapter::SocketStreamer::Connect() {
     LOG4CXX_ERROR(logger, "Unable to listen");
     return false;
   }
-
-  send_socket_fd_ = accept(socket_fd_, NULL, NULL);
+  sockaddr_in client_addr;
+  socklen_t   client_len=sizeof(client_addr);
+  send_socket_fd_ = accept(socket_fd_, (sockaddr*)&client_addr, &client_len);
   if (0 >= send_socket_fd_) {
     LOG4CXX_ERROR(logger, "Unable to accept");
     return false;
   }
-
+/*  LOG4CXX_INFO(logger,"client socket:%u.%u.%u.%u:%u",
+    client_addr.sin_addr.s_net, 
+    client_addr.sin_addr.s_host, 
+    client_addr.sin_addr.s_lh, 
+    client_addr.sin_addr.s_impno,
+    client_addr.sin_port);*/
   is_first_frame_ = true;
   LOG4CXX_INFO(logger, "Client connected: " << send_socket_fd_);
   return true;
@@ -136,9 +163,13 @@ bool SocketStreamerAdapter::SocketStreamer::Send(
     }
     is_first_frame_ = false;
   }
-
+#if  defined(OS_WIN32)||defined(OS_WINCE)
+  ret = send(send_socket_fd_, (const char*)msg->data(),
+	  msg->data_size(), MSG_NOSIGNAL);
+#else
   ret = send(send_socket_fd_, msg->data(),
              msg->data_size(), MSG_NOSIGNAL);
+#endif
   if (-1 == ret) {
     LOG4CXX_ERROR(logger, "Unable to send data to socket");
     return false;

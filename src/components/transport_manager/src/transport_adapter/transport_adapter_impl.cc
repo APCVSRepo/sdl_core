@@ -32,6 +32,7 @@
 
 #include "config_profile/profile.h"
 #include "utils/logger.h"
+#include "utils/helpers.h"
 
 #include "transport_manager/transport_adapter/transport_adapter_impl.h"
 #include "transport_manager/transport_adapter/transport_adapter_listener.h"
@@ -42,8 +43,20 @@
 namespace transport_manager {
 namespace transport_adapter {
 
-CREATE_LOGGERPTR_GLOBAL(logger_, "TransportAdapterImpl")
+CREATE_LOGGERPTR_GLOBAL(logger_, "TransportManager")
 namespace {
+#ifdef OS_WINCE
+  const DeviceTypes::value_type rawData[] = {
+	  std::make_pair(AOA, std::string("USB_AOA")),
+	  std::make_pair(PASA_AOA, std::string("USB_AOA")),
+	  std::make_pair(MME, std::string("USB_IOS")),
+	  std::make_pair(BLUETOOTH, std::string("BLUETOOTH")),
+	  std::make_pair(PASA_BLUETOOTH, std::string("BLUETOOTH")),
+	  std::make_pair(TCP, std::string("WIFI"))
+  };
+  const int numElems = sizeof(rawData) / sizeof(rawData[0]);
+  DeviceTypes devicesType(rawData, rawData + numElems);
+#else
 DeviceTypes devicesType = {
   std::make_pair(AOA, std::string("USB_AOA")),
   std::make_pair(PASA_AOA, std::string("USB_AOA")),
@@ -52,24 +65,28 @@ DeviceTypes devicesType = {
   std::make_pair(PASA_BLUETOOTH, std::string("BLUETOOTH")),
   std::make_pair(TCP, std::string("WIFI"))
 };
+#endif
 }
 
 TransportAdapterImpl::TransportAdapterImpl(
-  DeviceScanner* device_scanner,
-  ServerConnectionFactory* server_connection_factory,
-  ClientConnectionListener* client_connection_listener)
-  : listeners_(),
-    initialised_(0),
-    devices_(),
-    devices_mutex_(),
-    connections_(),
-    connections_lock_(),
-#ifdef TIME_TESTER
+    DeviceScanner* device_scanner,
+    ServerConnectionFactory* server_connection_factory,
+    ClientConnectionListener* client_connection_listener,
+    resumption::LastState& last_state)
+    : listeners_()
+    , initialised_(0)
+    , devices_()
+    , devices_mutex_()
+    , connections_()
+    , connections_lock_()
+    ,
+#ifdef TELEMETRY_MONITOR
     metric_observer_(NULL),
-#endif  // TIME_TESTER
-    device_scanner_(device_scanner),
-    server_connection_factory_(server_connection_factory),
-    client_connection_listener_(client_connection_listener) {
+#endif  // TELEMETRY_MONITOR
+    device_scanner_(device_scanner)
+    , server_connection_factory_(server_connection_factory)
+    , client_connection_listener_(client_connection_listener),
+    last_state_(last_state) {
 }
 
 TransportAdapterImpl::~TransportAdapterImpl() {
@@ -588,11 +605,12 @@ void TransportAdapterImpl::DataReceiveDone(const DeviceUID& device_id,
   LOG4CXX_TRACE(logger_, "enter. device_id: " << &device_id << ", app_handle: " <<
                 &app_handle << ", message: " << message);
 
-#ifdef TIME_TESTER
+#ifdef TELEMETRY_MONITOR
   if (metric_observer_) {
     metric_observer_->StartRawMsg(message.get());
   }
-#endif  // TIME_TESTER
+#endif  // TELEMETRY_MONITOR
+
   for (TransportAdapterListenerList::iterator it = listeners_.begin();
        it != listeners_.end(); ++it) {
     (*it)->OnDataReceiveDone(this, device_id, app_handle, message);
@@ -771,17 +789,17 @@ std::string TransportAdapterImpl::GetConnectionType() const {
   return devicesType[GetDeviceType()];
 }
 
-#ifdef TIME_TESTER
-void TransportAdapterImpl::SetTimeMetricObserver(TMMetricObserver* observer) {
+#ifdef TELEMETRY_MONITOR
+void TransportAdapterImpl::SetTelemetryObserver(TMTelemetryObserver* observer) {
   metric_observer_ = observer;
 }
-#endif  // TIME_TESTER
+#endif  // TELEMETRY_MONITOR
 
-#ifdef TIME_TESTER
-TMMetricObserver* TransportAdapterImpl::GetTimeMetricObserver() {
+#ifdef TELEMETRY_MONITOR
+TMTelemetryObserver* TransportAdapterImpl::GetTelemetryObserver() {
   return metric_observer_;
 }
-#endif  // TIME_TESTER
+#endif  // TELEMETRY_MONITOR
 
 void TransportAdapterImpl::Store() const {
 }

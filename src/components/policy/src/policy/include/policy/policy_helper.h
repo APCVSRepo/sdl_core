@@ -33,9 +33,13 @@
 #ifndef SRC_COMPONENTS_POLICY_INCLUDE_POLICY_POLICY_HELPER_H_
 #define SRC_COMPONENTS_POLICY_INCLUDE_POLICY_POLICY_HELPER_H_
 
-#include "./functions.h"
+#include "functions.h"
 #include "utils/shared_ptr.h"
 #include "policy/policy_types.h"
+
+#ifdef OS_WINCE
+#pragma warning(disable: 4482)
+#endif
 
 namespace policy {
 class PolicyManagerImpl;

@@ -39,10 +39,15 @@
 #include <cstdio>
 
 #include "rpc_base/validation_report.h"
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include "utils/macro.h"
 #endif
+
 namespace rpc {
+
+#ifndef assert
+#define assert(s)
+#endif
 
 /*
  * Range helper class
@@ -54,31 +59,19 @@ Range<T>::Range(T min, T max)
 }
 
 template <typename T>
-#ifdef OS_WIN32
-T Range<T>::min_rpc() const {
-#else
 T Range<T>::min() const {
-#endif
   return min_;
 }
 
 template <typename T>
-#ifdef OS_WIN32
-T Range<T>::max_rpc() const {
-#else
 T Range<T>::max() const {
-#endif
   return max_;
 }
 
 template <typename T>
 template <typename U>
 bool Range<T>::Includes(U val) const {
-#ifdef OS_WIN32
-	return min_rpc() <= val && val <= max_rpc();
-#else
-	return min() <= val && val <= max();
-#endif
+  return min() <= val && val <= max();
 }
 
 
@@ -182,11 +175,7 @@ const Range<T> Integer<T, minval, maxval>::range_(minval, maxval);
 template<typename T, T minval, T maxval>
 Integer<T, minval, maxval>::Integer()
     : PrimitiveType(kUninitialized),
-#ifdef OS_WIN32
-		value_(range_.min_rpc()) {
-#else
       value_(range_.min()) {
-#endif
 }
 
 template<typename T, T minval, T maxval>
@@ -205,7 +194,10 @@ Integer<T, minval, maxval>& Integer<T, minval, maxval>::operator=(IntType new_va
 template<typename T, T minval, T maxval>
 Integer<T, minval, maxval>& Integer<T, minval, maxval>::operator=(const Integer& new_val) {
   this->value_ = new_val.value_;
-  this->value_state_= range_.Includes(new_val.value_) ? kValid : kInvalid;
+  if (new_val.is_initialized()) {
+    this->value_state_= range_.Includes(new_val.value_) ? kValid : kInvalid;
+  }
+
   return *this;
 }
 
@@ -229,23 +221,19 @@ Integer<T, minval, maxval>::operator IntType() const {
 /*
  * Float class
  */
+#if defined(OS_WIN32) || defined(OS_WINCE)
 template<int64_t minnum, int64_t maxnum, int64_t minden, int64_t maxden>
 const Range<double> Float<minnum, maxnum, minden, maxden>::range_(
-#ifdef OS_WIN32
-	double(minnum) / minden, double(maxnum) / maxden);
+    double(minnum)/minden, double(maxnum)/maxden);
 #else
-	(double(minnum)/minden), (double(maxnum)/maxden));
+template<int64_t minnum, int64_t maxnum, int64_t minden, int64_t maxden>
+const Range<double> Float<minnum, maxnum, minden, maxden>::range_(
+    (double(minnum) / minden), (double(maxnum) / maxden));
 #endif
-
-
 template<int64_t minnum, int64_t maxnum, int64_t minden, int64_t maxden>
 Float<minnum, maxnum, minden, maxden>::Float()
     : PrimitiveType(kUninitialized),
-#ifdef OS_WIN32
-		value_(range_.min_rpc()) {
-#else
       value_(range_.min()) {
-#endif
 }
 
 template<int64_t minnum, int64_t maxnum, int64_t minden, int64_t maxden>
@@ -292,7 +280,7 @@ String<minlen, maxlen>::String(const char* value)
 }
 
 template<size_t minlen, size_t maxlen>
-bool String<minlen, maxlen>::operator<(String new_val) {
+bool String<minlen, maxlen>::operator<(const String& new_val) const {
   return value_ < new_val.value_;
 }
 
@@ -305,13 +293,16 @@ String<minlen, maxlen>& String<minlen, maxlen>::operator=(const std::string& new
 
 template<size_t minlen, size_t maxlen>
 String<minlen, maxlen>& String<minlen, maxlen>::operator=(const String& new_val) {
+  if(*this == new_val) {
+    return *this;
+  }
   value_.assign(new_val.value_);
   value_state_ = new_val.value_state_;
   return *this;
 }
 
 template<size_t minlen, size_t maxlen>
-bool String<minlen, maxlen>::operator==(const String& rhs) {
+bool String<minlen, maxlen>::operator==(const String& rhs) const {
   return value_ == rhs.value_;
 }
 
@@ -336,7 +327,7 @@ Enum<T>::Enum(EnumType value)
 }
 
 template<typename T>
-Enum<T>& Enum<T>::operator=(EnumType new_val) {
+Enum<T>& Enum<T>::operator=(const EnumType& new_val) {
   value_ = new_val;
   value_state_ = IsValidEnum(value_) ? kValid : kInvalid;
   return *this;
@@ -424,7 +415,7 @@ void Array<T, minsize, maxsize>::ReportErrors(ValidationReport* report) const {
     const T& elem = this->operator [](i);
     if (!elem.is_valid()) {
       char elem_idx[32] = {};
-      snprintf(elem_idx, 32, "[%zu]", i);
+      snprintf(elem_idx, 32, "[%u]", i);
       ValidationReport& elem_report =
           report->ReportSubobject(elem_idx);
       elem.ReportErrors(&elem_report);
@@ -627,6 +618,13 @@ T* Optional<T>::operator->() {
 template<typename T>
 const T* Optional<T>::operator->() const {
   return &value_;
+}
+
+template<typename T>
+void Optional<T>::assign_if_valid(const Optional<T>& value) {
+  if (value.is_initialized()) {
+    value_ = value.value_;
+  }
 }
 
 template<typename T>

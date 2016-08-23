@@ -1,4 +1,4 @@
-# Copyright (c) 2014, Ford Motor Company
+# Copyright (c) 2015, Ford Motor Company
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -38,9 +38,15 @@ include_directories (
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	include_directories (
-		${CMAKE_SOURCE_DIR}/include/win32
+	include_directories(
+      ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
 	)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+    include_directories(
+      ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+    )
 endif()
 
 set (SOURCES
@@ -48,3 +54,7 @@ set (SOURCES
 )
 
 add_library("Resumption" ${SOURCES})
+
+if(BUILD_TESTS)
+  add_subdirectory(test)
+endif()

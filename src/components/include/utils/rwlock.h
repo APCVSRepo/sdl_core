@@ -33,25 +33,19 @@
 #ifndef SRC_COMPONENTS_INCLUDE_UTILS_RWLOCK_H_
 #define SRC_COMPONENTS_INCLUDE_UTILS_RWLOCK_H_
 
-#if defined(OS_POSIX)
+#if defined(OS_POSIX) || defined(OS_WIN32) || defined(OS_WINCE)
 #include <pthread.h>
 #endif
 
-#ifdef OS_WIN32
-#include "pthread.h"
-#endif
 #include "utils/macro.h"
 
 namespace sync_primitives {
 
 namespace impl {
-#if defined(OS_POSIX)
+#if defined(OS_POSIX) || defined(OS_WIN32) || defined(OS_WINCE)
 typedef pthread_rwlock_t PlatformRWLock;
 #else
-//#error Please implement rwlock for your OS
-#endif
-#ifdef OS_WIN32
-	typedef pthread_rwlock_t PlatformRWLock;
+#error Please implement rwlock for your OS
 #endif
 }  // namespace impl
 

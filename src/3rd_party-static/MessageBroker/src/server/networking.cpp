@@ -92,7 +92,7 @@ int connect(enum TransportProtocol protocol,
     }
 
     if (protocol == TCP && ::connect(sock, (struct sockaddr*)p->ai_addr, p->ai_addrlen) == -1) {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	  closesocket(sock);
 #else
 	  ::close(sock);
@@ -165,9 +165,7 @@ int bind(enum TransportProtocol protocol,
     on = 0;
 #endif
 
-#ifdef MODIFY_FUNCTION_SIGN
-	  // add INADDR_ANY...
-
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	  ::sockaddr *psockaddr = NULL;
 	  ::sockaddr_in *psockaddrin = (sockaddr_in*)p->ai_addr;
 	  psockaddrin->sin_addr.s_addr = INADDR_ANY;
@@ -179,14 +177,14 @@ int bind(enum TransportProtocol protocol,
       if(::bind(sock, p->ai_addr, p->ai_addrlen) == -1)
 #endif
       {
-#ifdef OS_WIN32
-		closesocket(sock);
+#if defined(OS_WIN32) || defined(OS_WINCE)
+      closesocket(sock);
 #else
-		::close(sock);
+      ::close(sock);
 #endif
-        sock = -1;
-        continue;
-      }
+      sock = -1;
+      continue;
+    }
 
     if (sockaddr) {
       memcpy(sockaddr, p->ai_addr, p->ai_addrlen);

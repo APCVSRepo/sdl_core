@@ -30,12 +30,14 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef OS_WIN32
+#include <algorithm>
 #include <errno.h>
+#ifndef OS_WINCE
 #include <fcntl.h>
+#endif
 #include <memory.h>
 #include <unistd.h>
-#else
+#if !defined(OS_WIN32) && !defined(OS_WINCE)
 #include <sys/types.h>
 #include <sys/socket.h>
 #endif
@@ -44,7 +46,6 @@
 
 #include "transport_manager/transport_adapter/threaded_socket_connection.h"
 #include "transport_manager/transport_adapter/transport_adapter_controller.h"
-#include "transport_manager/common.h"
 
 namespace transport_manager {
 namespace transport_adapter {
@@ -76,7 +77,7 @@ ThreadedSocketConnection::~ThreadedSocketConnection() {
   delete thread_->delegate();
   threads::DeleteThread(thread_);
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   if (-1 != read_fd_) { 
 	closesocket(read_fd_);
   }
@@ -99,7 +100,7 @@ void ThreadedSocketConnection::Abort() {
   terminate_flag_ = true;
 }
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 void* StartThreadedSocketConnection(void* v) {
   LOG4CXX_AUTO_TRACE(logger_);
   ThreadedSocketConnection* connection =
@@ -118,30 +119,30 @@ int ThreadedSocketConnection::CreatePipe()
 	int namelen = sizeof(name);
 	tcp1 = tcp2 = -1;
 	int tcp = socket(AF_INET, SOCK_STREAM, 0);
-	if (tcp == -1){
+	if (tcp == -1) {
 		goto clean;
 	}
-	if (bind(tcp, (sockaddr*)&name, namelen) == -1){
+	if (bind(tcp, (sockaddr*)&name, namelen) == -1) {
 		goto clean;
 	}
-	if (::listen(tcp, 5) == -1){
+	if (::listen(tcp, 5) == -1) {
 		goto clean;
 	}
-	if (getsockname(tcp, (sockaddr*)&name, &namelen) == -1){
+	if (getsockname(tcp, (sockaddr*)&name, &namelen) == -1) {
 		goto clean;
 	}
 	tcp1 = socket(AF_INET, SOCK_STREAM, 0);
-	if (tcp1 == -1){
+	if (tcp1 == -1) {
 		goto clean;
 	}
-	if (-1 == connect(tcp1, (sockaddr*)&name, namelen)){
+	if (-1 == connect(tcp1, (sockaddr*)&name, namelen)) {
 		goto clean;
 	}
 	tcp2 = accept(tcp, (sockaddr*)&name, &namelen);
-	if (tcp2 == -1){
+	if (tcp2 == -1) {
 		goto clean;
 	}
-	if (closesocket(tcp) == -1){
+	if (closesocket(tcp) == -1) {
 		goto clean;
 	}
 	write_fd_ = tcp1;
@@ -150,13 +151,13 @@ int ThreadedSocketConnection::CreatePipe()
 	ioctlsocket(read_fd_, FIONBIO, (u_long FAR*) &iMode);
 	return 0;
 clean:
-	if (tcp != -1){
+	if (tcp != -1) {
 		closesocket(tcp);
 	}
-	if (tcp2 != -1){
+	if (tcp2 != -1) {
 		closesocket(tcp2);
 	}
-	if (tcp1 != -1){
+	if (tcp1 != -1) {
 		closesocket(tcp1);
 	}
 	return -1;
@@ -165,7 +166,7 @@ clean:
 
 TransportAdapter::Error ThreadedSocketConnection::Start() {
   LOG4CXX_AUTO_TRACE(logger_);
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   if (-1 == CreatePipe())
 	  return TransportAdapter::FAIL;
   if (!thread_->start()) {
@@ -212,7 +213,7 @@ void ThreadedSocketConnection::Finalize() {
     LOG4CXX_DEBUG(logger_, "not unexpected_disconnect");
     controller_->ConnectionFinished(device_handle(), application_handle());
   }
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   closesocket(socket_);
   closesocket(read_fd_);
   closesocket(write_fd_);
@@ -230,8 +231,8 @@ TransportAdapter::Error ThreadedSocketConnection::Notify() const {
     return TransportAdapter::BAD_STATE;
   }
   uint8_t c = 0;
-#ifdef OS_WIN32
-  if (1 == ::send(write_fd_, (const char *)&c, 1, 0)) {
+#if defined(OS_WIN32) || defined(OS_WINCE)
+  if (1 != ::send(write_fd_, (const char *)&c, 1, 0)) {
 #else
   if (1 != write(write_fd_, &c, 1)) {
 #endif
@@ -281,8 +282,14 @@ void ThreadedSocketConnection::threadMain() {
   }
 }
 
+bool ThreadedSocketConnection::IsFramesToSendQueueEmpty() const {
+  // Check Frames queue is empty or not
+  sync_primitives::AutoLock auto_lock(frames_to_send_mutex_);
+  return frames_to_send_.empty();
+}
+
 void ThreadedSocketConnection::Transmit() {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	//LOG4CXX_INFO(logger, "begin while(!terminate_flag_)");
 	fd_set fdread;
 	timeval tv;
@@ -294,7 +301,7 @@ void ThreadedSocketConnection::Transmit() {
 	FD_SET(socket_, &fdread);
 	FD_SET(read_fd_, &fdread);
 	int ret = select(0, &fdread, NULL, NULL, NULL);
-	if (ret == SOCKET_ERROR){
+	if (ret == SOCKET_ERROR) {
 		Abort();
 		LOG4CXX_INFO(logger_, "if (ret == SOCKET_ERROR) exit");
 		return;
@@ -331,38 +338,40 @@ void ThreadedSocketConnection::Transmit() {
 	}
 	//LOG4CXX_INFO(logger, "end while(!terminate_flag_)");
 #else
-  LOG4CXX_TRACE_ENTER(logger_);
-  bool pipe_notified = false;
-  bool pipe_terminated = false;
+  LOG4CXX_AUTO_TRACE(logger_);
 
-  const nfds_t poll_fds_size = 2;
-  pollfd poll_fds[poll_fds_size];
+  const nfds_t kPollFdsSize = 2;
+  pollfd poll_fds[kPollFdsSize];
   poll_fds[0].fd = socket_;
-  poll_fds[0].events = POLLIN | POLLPRI | (frames_to_send_.empty() ? 0 : POLLOUT);
+
+  const bool is_queue_empty_on_poll = IsFramesToSendQueueEmpty();
+
+  poll_fds[0].events = POLLIN | POLLPRI
+      | (is_queue_empty_on_poll ? 0 : POLLOUT);
   poll_fds[1].fd = read_fd_;
   poll_fds[1].events = POLLIN | POLLPRI;
 
-  LOG4CXX_INFO(logger_, "poll (#" << pthread_self() << ") " << this);
-  if (-1 == poll(poll_fds, poll_fds_size, -1)) {
+  LOG4CXX_DEBUG(logger_, "poll " << this);
+  if (-1 == poll(poll_fds, kPollFdsSize, -1)) {
     LOG4CXX_ERROR_WITH_ERRNO(logger_, "poll failed for connection " << this);
     Abort();
-    LOG4CXX_INFO(logger_, "exit");
     return;
   }
-  LOG4CXX_INFO(logger_, "poll is ok (#" << pthread_self() << ") " << this << " revents0:" << std::hex << poll_fds[0].revents << " revents1:" << std::hex << poll_fds[1].revents);
+  LOG4CXX_DEBUG(
+      logger_,
+      "poll is ok " << this << " revents0: " << std::hex << poll_fds[0].revents <<
+      " revents1:" << std::hex << poll_fds[1].revents);
   // error check
   if (0 != (poll_fds[1].revents & (POLLERR | POLLHUP | POLLNVAL))) {
     LOG4CXX_ERROR(logger_,
                   "Notification pipe for connection " << this << " terminated");
     Abort();
-    LOG4CXX_INFO(logger_, "exit");
     return;
   }
 
-  if (0 != (poll_fds[0].revents & (POLLERR | POLLHUP | POLLNVAL))) {
-    LOG4CXX_INFO(logger_, "Connection " << this << " terminated");
+  if (poll_fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+    LOG4CXX_WARN(logger_, "Connection " << this << " terminated");
     Abort();
-    LOG4CXX_INFO(logger_, "exit");
     return;
   }
 
@@ -376,53 +385,45 @@ void ThreadedSocketConnection::Transmit() {
     LOG4CXX_ERROR_WITH_ERRNO(logger_, "Failed to clear notification pipe");
     LOG4CXX_ERROR_WITH_ERRNO(logger_, "poll failed for connection " << this);
     Abort();
-    LOG4CXX_INFO(logger_, "exit");
     return;
   }
 
-  // send data if possible
-  if (!frames_to_send_.empty() && (poll_fds[0].revents | POLLOUT)) {
-    LOG4CXX_INFO(logger_, "frames_to_send_ not empty()  (#" << pthread_self() << ")");
+  const bool is_queue_empty = IsFramesToSendQueueEmpty();
+
+  // Send data if possible
+  if (!is_queue_empty && (poll_fds[0].revents | POLLOUT)) {
+    LOG4CXX_DEBUG(logger_, "frames_to_send_ not empty() ");
 
     // send data
     const bool send_ok = Send();
     if (!send_ok) {
-      LOG4CXX_INFO(logger_, "Send() failed  (#" << pthread_self() << ")");
+      LOG4CXX_ERROR(logger_, "Send() failed ");
       Abort();
-      LOG4CXX_INFO(logger_, "exit");
       return;
     }
   }
 
   // receive data
-#ifdef OS_WIN32
-    if (0 != poll_fds[0].revents & (POLLIN | POLLPRI)) {
-#elif defined(OS_MAC)
-    if (0 != (poll_fds[0].revents & (POLLIN | POLLPRI))) {
-#else
-  if (0 != poll_fds[0].revents & (POLLIN | POLLPRI)) {
-#endif
+  if (poll_fds[0].revents & (POLLIN | POLLPRI)) {
     const bool receive_ok = Receive();
     if (!receive_ok) {
-      LOG4CXX_INFO(logger_, "Receive() failed  (#" << pthread_self() << ")");
+      LOG4CXX_ERROR(logger_, "Receive() failed ");
       Abort();
-      LOG4CXX_INFO(logger_, "exit");
       return;
     }
   }
-  LOG4CXX_TRACE_EXIT(logger_);
 #endif
 }
 
 bool ThreadedSocketConnection::Receive() {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	unsigned char buffer[4096];
 	ssize_t bytes_read = 0;
 	int times = 1;// 30;
 	int i = 0;
 	do {
 		bytes_read = recv(socket_, (char *)buffer, sizeof(buffer), 0);
-		if (bytes_read > 0){
+		if (bytes_read > 0) {
 			break;
 		}
 		i++;
@@ -432,7 +433,7 @@ bool ThreadedSocketConnection::Receive() {
 		LOG4CXX_INFO(
 			logger_,
 			"Received " << bytes_read << " bytes for connection " << this);
-		RawMessageSptr frame(
+        protocol_handler::RawMessagePtr frame(
 			new protocol_handler::RawMessage(0, 0, buffer, bytes_read));
 		controller_->DataReceiveDone(device_handle(), application_handle(),
 			frame);
@@ -446,7 +447,7 @@ bool ThreadedSocketConnection::Receive() {
 
 	return true;
 #else
-  LOG4CXX_TRACE_ENTER(logger_);
+  LOG4CXX_AUTO_TRACE(logger_);
   uint8_t buffer[4096];
   ssize_t bytes_read = -1;
 
@@ -479,30 +480,38 @@ bool ThreadedSocketConnection::Receive() {
 
 bool ThreadedSocketConnection::Send() {
   LOG4CXX_AUTO_TRACE(logger_);
-  FrameQueue frames_to_send;
-  frames_to_send_mutex_.Acquire();
-  std::swap(frames_to_send, frames_to_send_);
-  frames_to_send_mutex_.Release();
+  FrameQueue frames_to_send_local;
+
+  {
+    sync_primitives::AutoLock auto_lock(frames_to_send_mutex_);
+    std::swap(frames_to_send_local, frames_to_send_);
+  }
 
   size_t offset = 0;
-  while (!frames_to_send.empty()) {
+  while (!frames_to_send_local.empty()) {
     LOG4CXX_INFO(logger_, "frames_to_send is not empty");
-    RawMessageSptr frame = frames_to_send.front();
+    ::protocol_handler::RawMessagePtr frame = frames_to_send_local.front();
+
+#if defined(OS_WIN32) || defined(OS_WINCE)
     const ssize_t bytes_sent = ::send(socket_, (char*)frame->data() + offset,
+        frame->data_size() - offset, 0);
+#else
+    const ssize_t bytes_sent = ::send(socket_, frame->data() + offset,
                                       frame->data_size() - offset, 0);
+#endif
 
     if (bytes_sent >= 0) {
       LOG4CXX_DEBUG(logger_, "bytes_sent >= 0");
       offset += bytes_sent;
       if (offset == frame->data_size()) {
-        frames_to_send.pop();
+        frames_to_send_local.pop();
         offset = 0;
         controller_->DataSendDone(device_handle(), application_handle(), frame);
       }
     } else {
       LOG4CXX_DEBUG(logger_, "bytes_sent < 0");
       LOG4CXX_ERROR_WITH_ERRNO(logger_, "Send failed for connection " << this);
-      frames_to_send.pop();
+      frames_to_send_local.pop();
       offset = 0;
       controller_->DataSendFailed(device_handle(), application_handle(), frame,
                                   DataSendError());

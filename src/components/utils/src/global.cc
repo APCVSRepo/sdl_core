@@ -30,15 +30,13 @@
 * POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifdef MODIFY_FUNCTION_SIGN
-#include <global_first.h>
-#endif
-#ifdef OS_WIN32 
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include <windows.h>
 #else
 #include <memory.h>
 #endif
 #include "utils/global.h"
+#include "vector"
 
 #ifdef OS_WINCE
 time_t time(time_t* TimeOutPtr){
@@ -106,7 +104,7 @@ bool Global::isUtf8(const void* pBuffer, long size)
 
 void Global::toUnicode(const char *strSrc, unsigned int nCodePage, wchar_string &wstrOut)
 {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	int nLength = MultiByteToWideChar(nCodePage, 0, strSrc, -1, NULL, 0);
 	wstrOut.clear();
 	wstrOut.resize(nLength);
@@ -117,7 +115,7 @@ void Global::toUnicode(const char *strSrc, unsigned int nCodePage, wchar_string 
 
 void Global::toUnicode(const std::string &strSrc, unsigned int nCodePage, wchar_string &wstrOut)
 {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	int nLength = MultiByteToWideChar(nCodePage, 0, strSrc.c_str(), -1, NULL, 0);
 	wstrOut.clear();
 	wstrOut.resize(nLength);
@@ -128,7 +126,7 @@ void Global::toUnicode(const std::string &strSrc, unsigned int nCodePage, wchar_
 
 void Global::fromUnicode(const wchar_t *wstrSrc, unsigned int nCodePage, std::string &strOut)
 {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	int nLength = WideCharToMultiByte(nCodePage, 0, wstrSrc, -1, NULL, 0, NULL, NULL);
 	strOut.clear();
 	strOut.resize(nLength);
@@ -139,7 +137,7 @@ void Global::fromUnicode(const wchar_t *wstrSrc, unsigned int nCodePage, std::st
 
 void Global::fromUnicode(const wchar_string &wstrSrc, unsigned int nCodePage, std::string &strOut)
 {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	int nLength = WideCharToMultiByte(nCodePage, 0, (wchar_t*)wstrSrc.c_str(), -1, NULL, 0, NULL, NULL);
 	strOut.clear();
 	strOut.resize(nLength);
@@ -150,7 +148,7 @@ void Global::fromUnicode(const wchar_string &wstrSrc, unsigned int nCodePage, st
 
 void Global::anyMultiToUtf8Multi(const std::string &strSrc, std::string &strOut)
 {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	if (isUnicode(strSrc.c_str(), strSrc.size())){
 		// muti-unicode to wide-unicode
 		wchar_t *pUnicodeData = new wchar_t[strSrc.size()];
@@ -183,7 +181,7 @@ void Global::anyMultiToUtf8Multi(const std::string &strSrc, std::string &strOut)
 
 void Global::utf8MultiToAnsiMulti(const std::string &strSrc, std::string &strOut)
 {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	wchar_string wc_utf_string;
 	toUnicode(strSrc, CP_UTF8, wc_utf_string);
 	fromUnicode(wc_utf_string, CP_ACP, strOut);
@@ -215,6 +213,81 @@ time_t Global::time(time_t* TimeOutPtr)
 	return Time;
 }
 #endif
+
+std::wstring Global::StringToWString(const std::string &str)
+ {
+     std::wstring wstr(str.length(),L' ');
+     std::copy(str.begin(), str.end(), wstr.begin());
+     return wstr; 
+ }
+ 
+std::string Global::WStringToString(const std::wstring &wstr)
+ {
+     std::string str(wstr.length(), ' ');
+     std::copy(wstr.begin(), wstr.end(), str.begin());
+     return str; 
+ }
+
+std::wstring Global::RelativePathToAbsPath(const std::wstring RelativePath)
+{
+  std::wstring strRet;
+  std::vector<std::wstring> ItemPath;
+
+  wchar_t tmpStr[MAX_PATH] = {0};
+  wchar_t *p1, *p2, *pEnd;
+
+  GetModuleFileNameW(NULL, tmpStr, MAX_PATH);
+  
+  p1 = tmpStr;
+  p2 = tmpStr;
+  pEnd = wcsrchr(tmpStr, L'\\');
+
+  for (; p2 <= pEnd; p2++) {
+    if ((*p2 == L'\\' || *p2 == L'/' || p2 == pEnd) && p1 < p2) {
+      ItemPath.push_back(std::wstring(p1, p2 - p1));
+      p1 = p2 + 1;
+    }
+  }
+
+  if (RelativePath.size() > MAX_PATH - 1) return L"";
+
+  int iSz = swprintf_s(tmpStr, MAX_PATH, L"%s", RelativePath.c_str());
+
+  p1 = tmpStr;
+  p2 = tmpStr;
+  pEnd = &tmpStr[iSz];
+
+  for (; p2 <= pEnd; p2++) {
+    if ((*p2 == L'\\' || *p2 == L'/'  || p2 == pEnd) && p1 < p2) {
+      std::wstring tmpStr = std::wstring(p1, p2 - p1);
+      if (tmpStr == L".") {
+      }
+      else if (tmpStr == L"..") {
+        ItemPath.pop_back();
+      }
+      else {
+        ItemPath.push_back(tmpStr);
+      }
+      p1 = p2 + 1;
+    }
+  }
+
+  for (std::vector<std::wstring>::iterator it = ItemPath.begin(); it != ItemPath.end(); it++) {
+    strRet += *it + L"\\";
+  }
+  strRet.erase(--strRet.end());
+
+  return strRet;
+}
+
+std::string Global::RelativePathToAbsPath(const std::string RelativePath)
+{
+  std::wstring tmp;
+  
+  tmp = RelativePathToAbsPath(Global::StringToWString(RelativePath));
+
+  return Global::WStringToString(tmp);
+}
 
 Global::Global()
 {

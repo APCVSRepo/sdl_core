@@ -31,11 +31,13 @@
 #include <stdint.h>
 #endif //_MSC_VER
 
+#ifndef _WINSOCKAPI_
 #include <winsock2.h>
+#endif
 #include <windows.h>
 
 #if _MSC_VER >= 1400 // VC++ 8.0
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include <stdint.h>
 #ifndef snprintf
 #define snprintf _snprintf
@@ -61,7 +63,7 @@
 #endif //(_WIN32_WINNT != OLD_WIN32_WINNT)
 
 typedef int socklen_t;
-#ifndef OS_WIN32
+#if !(defined(OS_WIN32)||defined(OS_WINCE))
 #define close closesocket
 #endif
 

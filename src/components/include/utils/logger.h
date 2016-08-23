@@ -34,16 +34,20 @@
 #define SRC_COMPONENTS_INCLUDE_UTILS_LOGGER_H_
 
 #ifdef ENABLE_LOG
-#include <errno.h>
-#include <string.h>
-#include <sstream>
-#include <log4cxx/propertyconfigurator.h>
-#include <log4cxx/spi/loggingevent.h>
-#include "utils/push_log.h"
-#include "utils/logger_status.h"
-#include "utils/auto_trace.h"
+  #include <errno.h>
+  #include <string.h>
+  #include <sstream>
+  #include <log4cxx/propertyconfigurator.h>
+  #include <log4cxx/spi/loggingevent.h>
+  #include "utils/push_log.h"
+  #include "utils/logger_status.h"
+  #include "utils/auto_trace.h"
 #ifdef OS_WIN32
 #define __PRETTY_FUNCTION__ __FUNCTION__
+#endif
+#ifdef OS_WINCE
+#define strerror(x) x
+#pragma warning(disable:4482)
 #endif
 #endif  // ENABLE_LOG
 
@@ -57,14 +61,20 @@
     #define CREATE_LOGGERPTR_LOCAL(logger_var, logger_name) \
       log4cxx::LoggerPtr logger_var = log4cxx::LoggerPtr(log4cxx::Logger::getLogger(logger_name));
 
-    #define INIT_LOGGER(file_name) \
+    #define ENABLE_LOGGER(logs_enabled)   logger::set_logs_enabled(logs_enabled)
+
+    #define INIT_LOGGER(file_name, logs_enabled) \
       log4cxx::PropertyConfigurator::configure(file_name); \
-      logger::set_logs_enabled(profile::Profile::instance()->logs_enabled());
+      logger::set_logs_enabled(logs_enabled);
 
     // Logger deinitilization function and macro, need to stop log4cxx writing
     // without this deinitilization log4cxx threads continue using some instances destroyed by exit()
     void deinit_logger();
     #define DEINIT_LOGGER() deinit_logger()
+
+    // special macros to dump logs from queue
+    // it's need, for example, when crash happend
+    #define FLUSH_LOGGER() logger::flush_logger()
 
     #define LOG4CXX_IS_TRACE_ENABLED(logger) logger->isTraceEnabled()
 
@@ -84,45 +94,33 @@
       } \
     } while (false)
 
-#ifndef OS_WIN32
     #undef LOG4CXX_TRACE
     #define LOG4CXX_TRACE(loggerPtr, logEvent) LOG_WITH_LEVEL(loggerPtr, ::log4cxx::Level::getTrace(), logEvent)
-#endif
 
     #define LOG4CXX_AUTO_TRACE_WITH_NAME_SPECIFIED(loggerPtr, auto_trace) \
       logger::AutoTrace auto_trace(loggerPtr, LOG4CXX_LOCATION)
     #define LOG4CXX_AUTO_TRACE(loggerPtr) LOG4CXX_AUTO_TRACE_WITH_NAME_SPECIFIED(loggerPtr, SDL_local_auto_trace_object)
 
-#ifndef OS_WIN32
     #undef LOG4CXX_DEBUG
     #define LOG4CXX_DEBUG(loggerPtr, logEvent) LOG_WITH_LEVEL(loggerPtr, ::log4cxx::Level::getDebug(), logEvent)
-#endif
 
-#ifndef OS_WIN32
     #undef LOG4CXX_INFO
     #define LOG4CXX_INFO(loggerPtr, logEvent) LOG_WITH_LEVEL(loggerPtr, ::log4cxx::Level::getInfo(), logEvent)
-#endif
 
-#ifndef OS_WIN32
     #undef LOG4CXX_WARN
     #define LOG4CXX_WARN(loggerPtr, logEvent) LOG_WITH_LEVEL(loggerPtr, ::log4cxx::Level::getWarn(), logEvent)
-#endif
 
-#ifndef OS_WIN32
     #undef LOG4CXX_ERROR
     #define LOG4CXX_ERROR(loggerPtr, logEvent) LOG_WITH_LEVEL(loggerPtr, ::log4cxx::Level::getError(), logEvent)
-#endif
 
-#ifndef OS_WIN32
     #undef LOG4CXX_FATAL
     #define LOG4CXX_FATAL(loggerPtr, logEvent) LOG_WITH_LEVEL(loggerPtr, ::log4cxx::Level::getFatal(), logEvent)
-#endif
 
-    #define LOG4CXX_ERROR_WITH_ERRNO(logger, message) \
-      LOG4CXX_ERROR(logger, message << ", error code " << errno << " (" << strerror(errno) << ")")
+    #define LOG4CXX_ERROR_WITH_ERRNO(loggerPtr, message) \
+      LOG4CXX_ERROR(loggerPtr, message << ", error code " << errno << " (" << strerror(errno) << ")")
 
-     #define LOG4CXX_WARN_WITH_ERRNO(logger, message) \
-       LOG4CXX_WARN(logger, message << ", error code " << errno << " (" << strerror(errno) << ")")
+     #define LOG4CXX_WARN_WITH_ERRNO(loggerPtr, message) \
+       LOG4CXX_WARN(loggerPtr, message << ", error code " << errno << " (" << strerror(errno) << ")")
 
 #else  // ENABLE_LOG is OFF
 
@@ -132,11 +130,8 @@
 
     #define INIT_LOGGER(file_name)
 
-#ifdef OS_WIN32
-	#define DEINIT_LOGGER()
-#else
     #define DEINIT_LOGGER(file_name)
-#endif
+
     #define LOG4CXX_IS_TRACE_ENABLED(logger) false
 
     #undef LOG4CXX_TRACE

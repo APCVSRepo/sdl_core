@@ -30,27 +30,55 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <fstream>
+#include <ctime>
+
 #include "gtest/gtest.h"
 #include "utils/auto_trace.h"
-#include "logger.h"
-#include <fstream>
+#include "utils/logger.h"
+#include "config_profile/profile.h"
+#include "utils/log_message_loop_thread.h"
+#include "utils/threads/message_loop_thread.h"
+#include "utils/file_system.h"
+#include "utils/threads/thread.h"
+#include "utils/date_time.h"
+#include "utils/logger_status.h"
 
 namespace test {
 namespace components {
-namespace utils {
+namespace utils_test {
 
 using namespace ::logger;
 
-CREATE_LOGGERPTR_GLOBAL(logger_, "AutoTraceTestLog");
+CREATE_LOGGERPTR_GLOBAL(logger_, "AutoTraceTestLog")
 
 void Preconditions() {
-  //delete file with previous logs
   const char* file_name = "AutoTraceTestLogFile.log";
-  std::remove(file_name);
+  // Delete file with previous logs
+  if (file_system::FileExists(file_name)) {
+#if defined(OS_WIN32) || defined(OS_WINCE)
+    ASSERT_TRUE(file_system::DeleteFileWindows(file_name))
+        << "Can't delete AutoTraceTestLogFile.log";
+#else
+    ASSERT_TRUE(file_system::DeleteFile(file_name))
+        << "Can't delete AutoTraceTestLogFile.log";
+#endif
+  }
 }
 
 void InitLogger() {
-  INIT_LOGGER("log4cxx.properties");
+  // Set enabled logs
+#ifdef OS_WINCE
+  profile::Profile::instance()->config_file_name(Global::RelativePathToAbsPath("smartDeviceLink.ini"));
+#else
+  profile::Profile::instance()->config_file_name("smartDeviceLink.ini");
+#endif
+  profile::Profile::instance()->UpdateValues();
+#ifdef OS_WINCE
+  INIT_LOGGER(Global::RelativePathToAbsPath("log4cxx.properties"), true); //DEINIT_LOGGER will be called in test_main.cc
+#else
+  INIT_LOGGER("log4cxx.properties", true); //DEINIT_LOGGER will be called in test_main.cc
+#endif
 }
 
 void CreateDeleteAutoTrace(const std::string & testlog) {
@@ -58,12 +86,14 @@ void CreateDeleteAutoTrace(const std::string & testlog) {
   LOG4CXX_DEBUG(logger_, testlog);
 }
 
-bool CheckTraceInFile(const std::string & testlog) {
-
+bool CheckAutoTraceDebugInFile(const std::string & testlog) {
   bool isLogFound = false;
   std::string line;
-
+#ifdef OS_WINCE
+  std::ifstream file_log(Global::RelativePathToAbsPath("AutoTraceTestLogFile.log").c_str());
+#else
   std::ifstream file_log("AutoTraceTestLogFile.log");
+#endif
 
   if (file_log.is_open()) {
     while (getline(file_log, line)) {
@@ -81,21 +111,24 @@ bool CheckTraceInFile(const std::string & testlog) {
   return isLogFound;
 }
 
-void DeinitLogger() {
-  DEINIT_LOGGER();
-}
-
-TEST(AutoTraceTest, Basic) {
+TEST(AutoTraceTest, AutoTrace_WriteToFile_ReadCorrectString) {
   const std::string testlog =
-      "Test trace is working!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
+      "Test trace is working!";
   Preconditions();
   InitLogger();
   CreateDeleteAutoTrace(testlog);
-  DeinitLogger();
-
-  ASSERT_TRUE(CheckTraceInFile(testlog));
+  const TimevalStruct startTime = date_time::DateTime::getCurrentTime();
+  const int64_t timeout_msec = 10000;
+  // Waiting for empty Logger MessageQueue 10 seconds
+  LogMessageLoopThread loop_thread;
+  while (loop_thread.GetMessageQueueSize()) {
+    ASSERT_LT(date_time::DateTime::calculateTimeDiff(
+        date_time::DateTime::getCurrentTime(), startTime), timeout_msec);
+    threads::Thread::yield();
+  }
+  ASSERT_TRUE(CheckAutoTraceDebugInFile(testlog));
 }
 
-}  // namespace utils
+}  // namespace utils_test
 }  // namespace components
 }  // namespace test

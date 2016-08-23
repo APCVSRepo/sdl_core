@@ -31,18 +31,23 @@
  */
 
 #include "utils/gen_hash.h"
-
 #include <cstdlib>
+#include <string>
+#ifndef OS_WINCE
+#include <locale>
+#endif
+#include "utils/custom_string.h"
 
 namespace utils {
 
 const std::string gen_hash(size_t size) {
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	static const char symbols[] = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 #else
-  static const char symbols[] = "0123456789"
-                                "abcdefghijklmnopqrstuvwxyz"
-                                "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  static const char symbols[] =
+      "0123456789"
+      "abcdefghijklmnopqrstuvwxyz"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 #endif
   static const size_t capacity = sizeof(symbols) - 1;
 
@@ -59,7 +64,7 @@ int32_t Djb2HashFromString(const std::string& str_to_hash) {
   std::string::const_iterator it = str_to_hash.begin();
   std::string::const_iterator it_end = str_to_hash.end();
 
-  for (;it != it_end; ++it) {
+  for (; it != it_end; ++it) {
     hash = ((hash << 5) + hash) + (*it);
   }
 
@@ -67,6 +72,51 @@ int32_t Djb2HashFromString(const std::string& str_to_hash) {
   // This is needed to avoid overflow for signed int.
   const int32_t result = hash & 0x7FFFFFFF;
   return result;
+}
+
+uint32_t CaseInsensitiveFaq6HashFromString(const char* cstr) {
+  uint32_t hash = 0;
+#ifdef OS_WINCE
+  for (; *cstr; ++cstr) {
+    char lower_char = tolower(*cstr);
+    hash += static_cast<uint32_t>(lower_char);
+    hash += (hash << 10);
+    hash ^= (hash >> 6);
+  }
+#else
+  std::locale loc;
+  for (; *cstr; ++cstr) {
+    char lower_char = std::tolower(*cstr, loc);
+    hash += static_cast<uint32_t>(lower_char);
+    hash += (hash << 10);
+    hash ^= (hash >> 6);
+  }
+#endif
+  hash += (hash << 3);
+  hash ^= (hash >> 11);
+  hash += (hash << 15);
+
+  return hash;
+}
+
+uint32_t CaseInsensitiveFaq6HashFromString(
+    const custom_string::CustomString& str_to_hash) {
+  uint32_t hash = 0;
+  if (str_to_hash.is_ascii_string()) {
+    hash = CaseInsensitiveFaq6HashFromString(str_to_hash.c_str());
+  } else {
+    const std::wstring& wstr = str_to_hash.ToWStringLowerCase();
+    size_t size = wstr.size();
+    for (size_t i = 0; i < size; ++i) {
+      hash += static_cast<uint32_t>(wstr[i]);
+      hash += (hash << 10);
+      hash ^= (hash >> 6);
+    }
+    hash += (hash << 3);
+    hash ^= (hash >> 11);
+    hash += (hash << 15);
+  }
+  return hash;
 }
 
 }  // namespace utils

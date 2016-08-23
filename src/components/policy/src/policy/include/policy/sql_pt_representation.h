@@ -37,20 +37,24 @@
 #include <vector>
 #include "policy/pt_representation.h"
 #include "rpc_base/rpc_base.h"
-#include "./types.h"
+#include "types.h"
 
 namespace policy_table = rpc::policy_table_interface_base;
 
 namespace utils {
 namespace dbms {
 class SQLDatabase;
-} // dbms
-} // utils
+} // namespace dbms
+} // namespace utils
 
 
 namespace policy {
 
+#if defined(OS_WIN32) || defined(OS_WINCE)
+class __declspec(dllexport) SQLPTRepresentation : public virtual PTRepresentation {
+#else
 class SQLPTRepresentation : public virtual PTRepresentation {
+#endif
   public:
     SQLPTRepresentation();
     ~SQLPTRepresentation();
@@ -70,7 +74,7 @@ class SQLPTRepresentation : public virtual PTRepresentation {
     virtual int TimeoutResponse();
     virtual bool SecondsBetweenRetries(std::vector<int>* seconds);
     virtual bool RefreshDB();
-    virtual VehicleData GetVehicleData();
+    virtual const VehicleInfo GetVehicleInfo() const;
 
     virtual std::vector<UserFriendlyMessage> GetUserFriendlyMsg(
       const std::vector<std::string>& msg_codes, const std::string& language);
@@ -80,7 +84,7 @@ class SQLPTRepresentation : public virtual PTRepresentation {
     virtual int GetNotificationsNumber(const std::string& priority);
     virtual bool GetPriority(const std::string& policy_app_id,
                              std::string* priority);
-    InitResult Init();
+    InitResult Init(const PolicySettings* settings);
     bool Close();
     bool Clear();
     bool Drop();
@@ -92,6 +96,11 @@ class SQLPTRepresentation : public virtual PTRepresentation {
                            StringArray* app_hmi_types = NULL);
     bool GetFunctionalGroupings(policy_table::FunctionalGroupings& groups);
 
+#ifdef BUILD_TESTS
+    uint32_t open_counter() {
+    return open_counter_;
+    }
+#endif // BUILD_TESTS
   protected:
     virtual void GatherModuleMeta(policy_table::ModuleMeta* meta) const;
     virtual void GatherModuleConfig(policy_table::ModuleConfig* config) const;
@@ -163,7 +172,7 @@ class SQLPTRepresentation : public virtual PTRepresentation {
 
     virtual bool SetVINValue(const std::string& value);
 
-    utils::dbms::SQLDatabase* db() const;
+    virtual utils::dbms::SQLDatabase* db() const;
     virtual bool SetIsDefault(const std::string& app_id, bool is_default) const;
 
 
@@ -192,6 +201,8 @@ class SQLPTRepresentation : public virtual PTRepresentation {
       const policy_table::NumberOfNotificationsPerMinute& notifications);
     bool SaveMessageType(const std::string& type);
     bool SaveLanguage(const std::string& code);
+
+    bool is_in_memory;
 };
 }  //  namespace policy
 

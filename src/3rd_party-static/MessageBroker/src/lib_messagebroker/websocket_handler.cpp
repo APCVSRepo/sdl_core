@@ -8,12 +8,13 @@
 
 #include <cstring>
 #include <sstream>
-#ifndef OS_WIN32
-#include <netinet/in.h>
-#endif
-
-#ifdef _WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
+#ifndef _WINSOCKAPI_
 #include <winsock2.h>
+#include <stdint.h>
+#endif
+#else
+#include <netinet/in.h>
 #endif//_WIN32
 
 #include "websocket_handler.hpp"
@@ -81,12 +82,8 @@ namespace NsMessageBroker
      unsigned char position = 0; // current buffer position
      unsigned int size = b_size;
 
-#ifdef OS_WIN32
-     while (0 < size) {
-#else
-	 static uint32_t minimum_heade_size = 4;
+     static uint32_t minimum_heade_size = 4;
      while (minimum_heade_size < size) {
-#endif
 
        bool fin = ((recBuffer[0] & 0x80) | (recBuffer[0] & 0x01)) == 0x81;
        bool rsv1 = (recBuffer[0] & 0x40) == 0x40;
@@ -102,7 +99,7 @@ namespace NsMessageBroker
                 "rsv1 = %d, rsv2 = %d, rsv3 = %d, opCode = %u\n",
                 fin, recBuffer[0], parsedBufferPosition + position,
                size, parsedBufferPosition, rsv1, rsv2, rsv3, opCode));
-			   
+
        if ((rsv1)|(rsv2)|(rsv3)) {
          DBG_MSG(("rsv1 or rsv2 or rsv3 is 0 \n"));
          break;
@@ -188,7 +185,7 @@ namespace NsMessageBroker
 
       if (b_size <= 125)
       {
-#ifdef OS_WIN32
+#if  defined(OS_WIN32) || defined(OS_WINCE)
         payload = (unsigned char)b_size;
 		Buffer[1] = (unsigned char)b_size;
 #else
@@ -210,12 +207,12 @@ namespace NsMessageBroker
 
       if (payload == 126)
       {
-#ifdef OS_WIN32
-		  Buffer[2] = (unsigned char)(b_size >> 8);
-		  Buffer[3] = (unsigned char)b_size;
+#if defined(OS_WIN32) || defined(OS_WINCE)
+         Buffer[2] = (unsigned char)(b_size >> 8);
+         Buffer[3] = (unsigned char)b_size;
 #else
-		  Buffer[2] = (b_size>>8);
-		  Buffer[3] = b_size;
+         Buffer[2] = (b_size >> 8);
+         Buffer[3] = b_size;
 #endif
       } else if (payload == 127)
       {

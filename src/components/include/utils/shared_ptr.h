@@ -53,7 +53,7 @@ namespace utils {
 template<typename ObjectType>
 class SharedPtr {
   public:
-    //std smart pointer compability
+    //std smart pointer compatibility
     typedef ObjectType element_type;
     /**
      * @brief Constructor.
@@ -120,7 +120,7 @@ class SharedPtr {
 
     bool operator ==(const SharedPtr<ObjectType>& Other) const;
 
-    bool operator< (const SharedPtr<ObjectType>& other) const;
+    bool operator <(const SharedPtr<ObjectType>& other) const;
 
     /**
      * @brief Assignment operator.
@@ -166,6 +166,12 @@ class SharedPtr {
     void reset(ObjectType* other);
     ObjectType* get() const;
 
+#ifdef BUILD_TESTS
+   inline const uint32_t* get_ReferenceCounter() const {
+     return mReferenceCounter;
+   }
+#endif // BUILD_TESTS
+
     /**
      * @return true if mObject not NULL
      */
@@ -210,15 +216,15 @@ inline utils::SharedPtr<ObjectType>::SharedPtr(ObjectType* Object)
 
 template<typename ObjectType>
 inline utils::SharedPtr<ObjectType>::SharedPtr()
-  : mObject(0),
-    mReferenceCounter(0) {
+  : mObject(NULL),
+    mReferenceCounter(NULL) {
 }
 
 template<typename ObjectType>
 inline utils::SharedPtr<ObjectType>::SharedPtr(
   const SharedPtr<ObjectType>& Other)
-  : mObject(0),
-    mReferenceCounter(0) {
+  : mObject(NULL),
+    mReferenceCounter(NULL) {
   *this = Other;
 }
 
@@ -226,8 +232,8 @@ template<typename ObjectType>
 template<typename OtherObjectType>
 inline utils::SharedPtr<ObjectType>::SharedPtr(
   const SharedPtr<OtherObjectType>& Other)
-  : mObject(0),
-    mReferenceCounter(0) {
+  : mObject(NULL),
+    mReferenceCounter(NULL) {
   *this = Other;
 }
 
@@ -249,7 +255,7 @@ inline bool utils::SharedPtr<ObjectType>::operator ==(
 }
 
 template<typename ObjectType>
-inline bool utils::SharedPtr<ObjectType>::operator< (
+inline bool utils::SharedPtr<ObjectType>::operator <(
   const SharedPtr<ObjectType>& other) const {
   return (mObject < other.mObject);
 }
@@ -297,7 +303,6 @@ utils::SharedPtr<OtherObjectType> utils::SharedPtr<ObjectType>::dynamic_pointer_
       atomic_post_inc(casted_pointer.mReferenceCounter);
     }
   }
-
   return casted_pointer;
 }
 

@@ -38,6 +38,10 @@
 #include "sqlite_wrapper/sql_database.h"
 #include "sqlite_wrapper/sql_query.h"
 
+#ifdef OS_WINCE
+#include "utils/file_system.h"
+#endif
+
 using ::utils::dbms::SQLError;
 using ::utils::dbms::SQLDatabase;
 using ::utils::dbms::SQLQuery;
@@ -53,7 +57,15 @@ class SQLQueryTest : public ::testing::Test {
   static const std::string kDatabaseName;
 
   static void SetUpTestCase() {
+#ifdef OS_WINCE
+    std::string tmp = kDatabaseName + ".sqlite";
+    if (tmp[0] != '\\' && tmp[0] != '/') {
+      tmp = Global::RelativePathToAbsPath(tmp);
+    }
+    sqlite3_open(tmp.c_str(), &conn);
+#else
     sqlite3_open((kDatabaseName + ".sqlite").c_str(), &conn);
+#endif
     sqlite3_exec(conn, "CREATE TABLE testTable (integerValue INTEGER,"
                  " doubleValue REAL, stringValue TEXT)",
                  NULL, NULL, NULL);
@@ -61,7 +73,11 @@ class SQLQueryTest : public ::testing::Test {
 
   static void TearDownTestCase() {
     sqlite3_close(conn);
+#ifdef OS_WINCE
+    file_system::DeleteFileWindows((kDatabaseName + ".sqlite").c_str());
+#else
     remove((kDatabaseName + ".sqlite").c_str());
+#endif
   }
 
   void SetUp() {

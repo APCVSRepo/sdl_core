@@ -36,18 +36,31 @@ include_directories(
     ${GMOCK_INCLUDE_DIRECTORY}
     ${COMPONENTS_DIR}/connection_handler/include
     ${COMPONENTS_DIR}/security_manager/test/include
+    ${COMPONENTS_DIR}/protocol_handler/test/include
     ${COMPONENTS_DIR}/security_manager/include
+    ${COMPONENTS_DIR}/application_manager/include
+    ${COMPONENTS_DIR}/connection_handler/test/include
+    ${COMPONENTS_DIR}/transport_manager/test/include
+    ${COMPONENTS_DIR}/resumption/include
+    ${JSONCPP_INCLUDE_DIRECTORY}
 )
 
 set(LIBRARIES
     gmock
     connectionHandler
     ConfigProfile
+    ProtocolHandler
+    TransportManager
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+  list(APPEND LIBRARIES sdk_ext ws2)
+endif()
 
 set(SOURCES
     connection_handler_impl_test.cc
     connection_test.cc
+    device_test.cc
     heart_beat_monitor_test.cc
 )
 

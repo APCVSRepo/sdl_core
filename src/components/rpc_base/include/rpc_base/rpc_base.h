@@ -38,6 +38,17 @@
 #include <string>
 #include <vector>
 
+#ifdef OS_WINCE
+#include "validation_report.h"
+#endif
+#ifdef max
+#undef max
+#endif
+
+#ifdef min
+#undef min
+#endif
+
 namespace Json {
 class Value;
 }  // namespace Json
@@ -86,13 +97,8 @@ class Range {
   public:
     // Methods
     Range(const T min, const T max);
-#ifdef OS_WIN32
-		T min_rpc() const;
-		T max_rpc() const;
-#else
     T min() const;
     T max() const;
-#endif
     template<typename U>
     bool Includes(U val) const;
   private:
@@ -145,7 +151,7 @@ class CompositeType {
       kInvalidInitialized
     };
     explicit CompositeType(InitializationState init_state);
-    virtual ~CompositeType(){}
+    virtual ~CompositeType() {}
     static InitializationState InitHelper(bool is_next);
     static InitializationState InitHelper(const Json::Value* value,
                                           bool (Json::Value::*type_check)() const);
@@ -234,10 +240,10 @@ class String : public PrimitiveType {
     explicit String(const Json::Value* value);
     explicit String(dbus::MessageReader* reader);
     String(const Json::Value* value, const std::string& def_value);
-    bool operator<(String new_val);
+    bool operator<(const String& new_val) const;
     String& operator=(const std::string& new_val);
     String& operator=(const String& new_val);
-    bool operator==(const String& rhs);
+    bool operator==(const String& rhs) const;
     operator const std::string& () const;
     Json::Value ToJsonValue() const;
     void ToDbusWriter(dbus::MessageWriter* writer) const;
@@ -259,7 +265,7 @@ class Enum : public PrimitiveType {
     explicit Enum(const Json::Value* value);
     explicit Enum(dbus::MessageReader* reader);
     Enum(const Json::Value* value, EnumType def_value);
-    Enum& operator=(EnumType new_val);
+    Enum& operator=(const EnumType& new_val);
     operator EnumType() const;
     Json::Value ToJsonValue() const;
     void ToDbusWriter(dbus::MessageWriter* writer) const;
@@ -398,6 +404,8 @@ class Optional {
     const T& operator*() const;
     T* operator->();
     const T* operator->() const;
+
+    void assign_if_valid(const Optional<T>& value);
     // For pointer-like 'if (optional_value)' tests
     // Better than operator bool because bool can be implicitly
     // casted to integral types

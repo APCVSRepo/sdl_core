@@ -33,9 +33,9 @@ set (AM_SOURCE_DIR ${COMPONENTS_DIR}/application_manager)
 set (AM_TEST_DIR ${AM_SOURCE_DIR}/test)
 set (AM_MOCK_DIR ${AM_TEST_DIR}/mock)
 
-
 include_directories (
   include/
+  ${COMPONENTS_DIR}
   ${COMPONENTS_DIR}/utils/include/
   ${COMPONENTS_DIR}/formatters/include/
   ${COMPONENTS_DIR}/protocol_handler/include/
@@ -48,40 +48,52 @@ include_directories (
   ${COMPONENTS_DIR}/resumption/include/
   ${COMPONENTS_DIR}/rpc_base/include/
   ${COMPONENTS_DIR}/interfaces
-  ${COMPONENTS_DIR}/protocol_handler/include/
   ${CMAKE_BINARY_DIR}/src/components/
-  ${COMPONENTS_DIR}/include/
   ${COMPONENTS_DIR}/policy/src/policy/include/
   ${COMPONENTS_DIR}/policy/src/policy/usage_statistics/include/
   ${JSONCPP_INCLUDE_DIRECTORY}
   ${ENCRYPTION_INCLUDE_DIRECTORY}
   ${MESSAGE_BROKER_INCLUDE_DIRECTORY}
   ${LOG4CXX_INCLUDE_DIRECTORY}
-  ${CMAKE_SOURCE_DIR}/src/3rd_party/apr-1.5.0/include
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	include_directories (
-		${CMAKE_SOURCE_DIR}/include/win32
-		${CMAKE_SOURCE_DIR}/src/3rd_party/apr-1.5.0/include/arch/win32
-		${CMAKE_SOURCE_DIR}/src/LibVrMsp/
-	)
+    include_directories(
+        ${COMPONENTS_DIR}/utils/include/utils/sqlite_wrapper/
+        ${CMAKE_SOURCE_DIR}/include/win32
+        ${CMAKE_SOURCE_DIR}/src/3rd_party/apache-log4cxx-win32-0.10.0/apr/include/arch/win32
+        ${CMAKE_SOURCE_DIR}/src/LibVrMsp/
+	    ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+    )
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+    include_directories(
+        ${COMPONENTS_DIR}/utils/include/utils/sqlite_wrapper/
+	    ${CMAKE_SOURCE_DIR}/include/wince
+	    ${CMAKE_SOURCE_DIR}/src/LibVrMsp/
+        ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+    )
+endif()
+  
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-include_directories(
-  ${COMPONENTS_DIR}/utils/include/utils/sqlite_wrapper/
-)
+  include_directories(
+    ${COMPONENTS_DIR}/utils/include/utils/sqlite_wrapper/
+  )
 endif ()
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "QNX")
   include_directories(
-  ${COMPONENTS_DIR}/utils/include/utils/qdb_wrapper/
-)
+    ${COMPONENTS_DIR}/utils/include/utils/qdb_wrapper/
+  )
 endif()
 
 file (GLOB SOURCES
   ${AM_SOURCE_DIR}/src/*
+)
+
+set (MESSAGE_HELPER_SOURCES
+  ${AM_SOURCE_DIR}/src/message_helper/message_helper.cc
 )
 
 set (POLICIES_MANAGER
@@ -94,7 +106,6 @@ ${AM_SOURCE_DIR}/src/policies/delegates/statistics_delegate.cc
   include_directories(
     ${COMPONENTS_DIR}/policy/src/policy/policy_table/table_struct
   )
-
 file (GLOB EVENT_ENGINE
   ${AM_SOURCE_DIR}/src/event_engine/*
 )
@@ -148,7 +159,6 @@ file (GLOB MOBILE_COMMANDS_SOURCES
   ${AM_SOURCE_DIR}/src/commands/hmi/on_exit_all_applications_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_exit_application_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_start_device_discovery.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_emergency_event_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/close_popup_request.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/close_popup_response.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_app_activated_notification.cc
@@ -258,7 +268,6 @@ file (GLOB MOBILE_COMMANDS_SOURCES
   ${AM_SOURCE_DIR}/src/commands/hmi/on_ignition_cycle_over_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_system_info_changed_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_file_removed_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_play_tone_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_tts_started_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_tts_stopped_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_started_notification.cc
@@ -304,33 +313,10 @@ file (GLOB MOBILE_COMMANDS_SOURCES
   ${AM_SOURCE_DIR}/src/commands/hmi/get_urls_response.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_device_state_changed_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/on_tts_reset_timeout_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_phone_call_notification.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/dial_number_request.cc
   ${AM_SOURCE_DIR}/src/commands/hmi/dial_number_response.cc
+  ${AM_SOURCE_DIR}/src/commands/hmi/on_event_changed_notification.cc
 )
-if(MODIFY_FUNCTION_FLAGS)
-list(APPEND HMI_COMMANDS_SOURCES
-  ${AM_SOURCE_DIR}/src/commands/hmi/sdl_log_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_unsubscribebutton_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_subscribebutton_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_microphone_recording_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_deleteinteractionchoiceset_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_createinteractionchoiceset_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_search_applist_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_find_applist_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_start_record_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_cancel_record_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_status_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_cancel_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_help_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_exit_app_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_switch_app_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_command_tts_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_vr_result_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_ui_perform_audio_pass_thru_start_notification.cc
-  ${AM_SOURCE_DIR}/src/commands/hmi/on_ui_perform_audio_pass_thru_stop_notification.cc
-)
-endif()
 
 set (HMI_COMMANDS_SOURCES_JSON
   ${AM_SOURCE_DIR}/src/commands/hmi/vi_get_vehicle_data_request.cc
@@ -373,7 +359,19 @@ if (${HMI_DBUS_API})
     set (HMI_COMMANDS_SOURCES ${HMI_COMMANDS_SOURCES} ${HMI_COMMANDS_SOURCES_DBUS})
 endif (${HMI_DBUS_API})
 
-SET (LIBRARIES
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+set (LIBRARIES
+  HMI_API
+  MOBILE_API
+  v4_protocol_v1_2_no_extra
+  ProtocolLibrary
+  SmartObjects
+  UsageStatistics
+  formatters
+  dbms
+)
+else()
+set (LIBRARIES
   HMI_API
   MOBILE_API
   v4_protocol_v1_2_no_extra
@@ -384,12 +382,13 @@ SET (LIBRARIES
   formatters
   dbms
 )
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND LIBRARIES sqlite3)
 endif ()
 
-IF(${CMAKE_SYSTEM_NAME} MATCHES "QNX" OR CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+if(${CMAKE_SYSTEM_NAME} MATCHES "QNX" OR CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
   list(REMOVE_ITEM LIBRARIES dl)
 endif()
 
@@ -403,6 +402,8 @@ target_link_libraries("AMPolicyLibrary" ${LIBRARIES} AMEventEngine)
 add_library("AMHMICommandsLibrary" ${HMI_COMMANDS_SOURCES})
 target_link_libraries("AMHMICommandsLibrary" ${LIBRARIES} AMEventEngine)
 
+add_library("MessageHelper" ${MESSAGE_HELPER_SOURCES})
+
 add_library("AMMobileCommandsLibrary" ${MOBILE_COMMANDS_SOURCES} )
 target_link_libraries("AMMobileCommandsLibrary" ${LIBRARIES} AMEventEngine)
 
@@ -411,13 +412,12 @@ target_link_libraries("ApplicationManager" ${LIBRARIES} AMHMICommandsLibrary
                                                         AMMobileCommandsLibrary
                                                         AMEventEngine
                                                         AMPolicyLibrary)
+
 if(ENABLE_LOG)
-if(MODIFY_FUNCTION_FLAGS)
-else()
   target_link_libraries("ApplicationManager" log4cxx -L${LOG4CXX_LIBS_DIRECTORY})
-endif()
 endif()
 
 if(BUILD_TESTS)
   add_subdirectory(test)
+  add_subdirectory(test/message_helper)
 endif()

@@ -37,11 +37,11 @@ include_directories (
 GenerateInterface("v4_protocol_v1_2_no_extra.xml" "NsSmartDeviceLinkRPC::V1" "sdlrpcv1")
 GenerateInterface("MOBILE_API.xml" "mobile_apis" "sdlrpcv2")
 
-IF (${HMI_JSON_API})
+if (${HMI_JSON_API})
   GenerateInterface("HMI_API.xml" "hmi_apis" "jsonrpc")
-ENDIF (${HMI_JSON_API})
+endif (${HMI_JSON_API})
 
-IF (${HMI_DBUS_API})
+if (${HMI_DBUS_API})
     set(hpp_file
       "${CMAKE_CURRENT_BINARY_DIR}/QT_HMI_API.h"
       "${CMAKE_CURRENT_BINARY_DIR}/QT_HMI_API_schema.h"
@@ -76,8 +76,6 @@ IF (${HMI_DBUS_API})
     COMMAND sed "-e" "s/QT_HMI_API/HMI_API/g" "${CMAKE_CURRENT_BINARY_DIR}/QT_HMI_API_schema.cc" > "${CMAKE_CURRENT_BINARY_DIR}/HMI_API_schema.cc"
     DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/QT_HMI_API_schema.cc" "${CMAKE_CURRENT_BINARY_DIR}/HMI_API_schema.h" "${CMAKE_CURRENT_BINARY_DIR}/HMI_API.h")
   add_library(HMI_API "${CMAKE_CURRENT_BINARY_DIR}/HMI_API_schema.cc")
-ENDIF (${HMI_DBUS_API})
+endif (${HMI_DBUS_API})
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
 add_dependencies(HMI_API Utils)
-endif()

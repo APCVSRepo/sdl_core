@@ -37,14 +37,15 @@
 typedef void (*sighandler_t) (int);
 #else
 #include <signal.h>
+#if defined(OS_WIN32) || defined(OS_WINCE)
 typedef void(*sighandler_t) (int);
+#endif
 #endif
 
 namespace utils {
 
-bool SubscribeToInterruptSignal(sighandler_t func);
-bool SubscribeToTerminateSignal(sighandler_t func);
-bool SubscribeToFaultSignal(sighandler_t func);
+bool UnsibscribeFromTermination();
+bool WaitTerminationSignals(sighandler_t sig_handler);
 
 }  //  namespace utils
 

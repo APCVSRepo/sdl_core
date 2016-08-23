@@ -33,17 +33,18 @@
 
 #include "transport_manager/tcp/tcp_client_listener.h"
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include <memory.h>
 #include <signal.h>
 #include <errno.h>
 #include <unistd.h>
+#include <MSTcpIP.h>
 #else
 #include <arpa/inet.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/socket.h>
-
 #ifdef __linux__
 #  include <linux/tcp.h>
 #else  // __linux__
@@ -61,22 +62,14 @@
 #include "transport_manager/tcp/tcp_device.h"
 #include "transport_manager/tcp/tcp_socket_connection.h"
 
-#ifdef OS_WIN32
-#define SIO_KEEPALIVE_VALS _WSAIOW(IOC_VENDOR,4)  
-#endif
 
 namespace transport_manager {
 namespace transport_adapter {
 
 CREATE_LOGGERPTR_GLOBAL(logger_, "TransportManager")
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	typedef int socklen_t;
-	struct TCP_KEEPALIVE {
-		unsigned long onoff;
-		unsigned long keepalivetime;
-		unsigned long keepaliveinterval;
-	};
 #endif
 
 TcpClientListener::TcpClientListener(TransportAdapterController* controller,
@@ -96,7 +89,7 @@ TransportAdapter::Error TcpClientListener::Init() {
   LOG4CXX_AUTO_TRACE(logger_);
   thread_stop_requested_ = false;
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   WSADATA WSAData;
   if (WSAStartup(MAKEWORD(2, 0), &WSAData) != 0)
   {
@@ -115,8 +108,8 @@ TransportAdapter::Error TcpClientListener::Init() {
   server_address.sin_port = htons(port_);
   server_address.sin_addr.s_addr = INADDR_ANY;
 
-#ifdef OS_WIN32
-  char optval = 0;
+#if defined(OS_WIN32) || defined(OS_WINCE)
+  char optval = 1;
 #else
   int optval = 1;
 #endif
@@ -143,7 +136,7 @@ void TcpClientListener::Terminate() {
     return;
   }
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   if (shutdown(socket_, 2) != 0) {
 	  LOG4CXX_ERROR_WITH_ERRNO(logger_, "Failed to shutdown socket");
   }
@@ -152,10 +145,10 @@ void TcpClientListener::Terminate() {
   }
 #else
   if (shutdown(socket_, SHUT_RDWR) != 0) {
-	  LOG4CXX_ERROR_WITH_ERRNO(logger_, "Failed to shutdown socket");
+    LOG4CXX_ERROR_WITH_ERRNO(logger_, "Failed to shutdown socket");
   }
   if (close(socket_) != 0) {
-	  LOG4CXX_ERROR_WITH_ERRNO(logger_, "Failed to close socket");
+    LOG4CXX_ERROR_WITH_ERRNO(logger_, "Failed to close socket");
   }
 #endif
 
@@ -178,17 +171,17 @@ void SetKeepaliveOptions(const int fd) {
   LOG4CXX_AUTO_TRACE(logger_);
   LOG4CXX_DEBUG(logger_, "fd: " << fd);
   int yes = 1;
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (const char *)&yes, sizeof(yes));
 
-	TCP_KEEPALIVE inKeepAlive = { 0 };	// in parameter
-	unsigned long ulInLen = sizeof(TCP_KEEPALIVE);
-	TCP_KEEPALIVE outKeepAlive = { 0 }; // out parameter
-	unsigned long ulOutLen = sizeof(TCP_KEEPALIVE);
+	tcp_keepalive inKeepAlive = { 0 };	// in parameter
+	unsigned long ulInLen = sizeof(tcp_keepalive);
+	tcp_keepalive outKeepAlive = { 0 }; // out parameter
+	unsigned long ulOutLen = sizeof(tcp_keepalive);
 	unsigned long ulBytesReturn = 0;
 
-	inKeepAlive.onoff = 1;
-	inKeepAlive.keepaliveinterval = 3000;
+	inKeepAlive.onoff = RCVALL_ON;
+	inKeepAlive.keepaliveinterval = 5000;
 	inKeepAlive.keepalivetime = 1000;
 	if (WSAIoctl((unsigned int)fd, SIO_KEEPALIVE_VALS,
 		(LPVOID)&inKeepAlive, ulInLen,
@@ -202,18 +195,16 @@ void SetKeepaliveOptions(const int fd) {
   int keepidle = 3;  // 3 seconds to disconnection detecting
   int keepcnt = 5;
   int keepintvl = 1;
-  int user_timeout = 7000;  // milliseconds
 #ifdef __linux__
+  int user_timeout = 7000;  // milliseconds
   setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &yes, sizeof(yes));
   setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
   setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
   setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
-#ifndef OS_ANDROID
   setsockopt(fd, IPPROTO_TCP, TCP_USER_TIMEOUT, &user_timeout,
              sizeof(user_timeout));
-#endif
-#elif __QNX__  // __linux__
-  // TODO (KKolodiy): Out of order!
+#elif defined(__QNX__)  // __linux__
+  // TODO(KKolodiy): Out of order!
   const int kMidLength = 4;
   int mib[kMidLength];
 
@@ -253,7 +244,11 @@ void TcpClientListener::Loop() {
                                      &client_address_size);
     if (thread_stop_requested_) {
       LOG4CXX_DEBUG(logger_, "thread_stop_requested_");
+#if defined(OS_WIN32) || defined(OS_WINCE)
+      closesocket(connection_fd);
+#else
       close(connection_fd);
+#endif
       break;
     }
 
@@ -264,7 +259,11 @@ void TcpClientListener::Loop() {
 
     if (AF_INET != client_address.sin_family) {
       LOG4CXX_DEBUG(logger_, "Address of connected client is invalid");
+#if defined(OS_WIN32) || defined(OS_WINCE)
+      closesocket(connection_fd);
+#else
       close(connection_fd);
+#endif
       continue;
     }
 
@@ -306,7 +305,7 @@ void TcpClientListener::StopLoop() {
   server_address.sin_addr.s_addr = INADDR_ANY;
   connect(byesocket, reinterpret_cast<sockaddr*>(&server_address),
           sizeof(server_address));
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   shutdown(byesocket, 2);
   closesocket(byesocket);
 #else

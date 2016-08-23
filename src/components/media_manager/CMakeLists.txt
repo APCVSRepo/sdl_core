@@ -65,9 +65,15 @@ set(LIBRARIES
 else(EXTENDED_MEDIA_MODE)
 set(default_includes
 )
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
 set(default_sources
-  ./src/video/video_stream_to_file_adapter.cc
+    ${COMPONENTS_DIR}/media_manager/src/audio/socket_audio_streamer_adapter.cc
+    ${COMPONENTS_DIR}/media_manager/src/audio/file_audio_streamer_adapter.cc
+    ${COMPONENTS_DIR}/media_manager/src/video/socket_video_streamer_adapter.cc
+    ${COMPONENTS_DIR}/media_manager/src/video/file_video_streamer_adapter.cc
+    ${COMPONENTS_DIR}/media_manager/src/streamer_adapter.cc
+    ${COMPONENTS_DIR}/media_manager/src/socket_streamer_adapter.cc
+    ${COMPONENTS_DIR}/media_manager/src/file_streamer_adapter.cc
 )
 else()
 set(default_sources
@@ -100,6 +106,7 @@ include_directories (
     ${COMPONENTS_DIR}/hmi_message_handler/include/
     ${COMPONENTS_DIR}/formatters/include/
     ${COMPONENTS_DIR}/config_profile/include/
+	${COMPONENTS_DIR}/resumption/include
     ${JSONCPP_INCLUDE_DIRECTORY}
     ${CMAKE_BINARY_DIR}/src/components/
     ${CMAKE_SOURCE_DIR}/src/components/policy/src/policy/include/
@@ -109,9 +116,15 @@ include_directories (
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	include_directories (
-		${CMAKE_SOURCE_DIR}/include/win32
+	include_directories(
+	  ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
 	)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+    include_directories(
+      ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+    )
 endif()
 
 set (SOURCES
@@ -126,5 +139,6 @@ add_library("MediaManager" ${SOURCES} ${default_sources})
 target_link_libraries("MediaManager" ${LIBRARIES})
 
 if(BUILD_TESTS)
-    add_subdirectory(test)
+  add_subdirectory(test)
 endif()
+

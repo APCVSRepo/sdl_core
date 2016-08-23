@@ -32,7 +32,7 @@
 #ifndef SRC_COMPONENTS_INCLUDE_UTILS_LOCK_H_
 #define SRC_COMPONENTS_INCLUDE_UTILS_LOCK_H_
 
-#if defined(OS_POSIX) || defined(OS_WIN32)
+#if defined(OS_POSIX) || defined(OS_WIN32) || defined(OS_WINCE)
 #include <pthread.h>
 #include <sched.h>
 #else
@@ -46,7 +46,7 @@
 namespace sync_primitives {
 
 namespace impl {
-#if defined(OS_POSIX) || defined(OS_WIN32)
+#if defined(OS_POSIX) || defined(OS_WIN32) || defined(OS_WINCE)
 typedef pthread_mutex_t PlatformMutex;
 #endif
 } // namespace impl
@@ -57,11 +57,15 @@ class SpinMutex {
   SpinMutex()
     : state_(0) { }
   void Lock() {
+    // Comment below add exception for lint error
+    // Reason: FlexeLint doesn't know about compiler's built-in instructions
+    /*lint -e1055*/
     if (atomic_post_set(&state_) == 0) {
       return;
     }
     for(;;) {
       sched_yield();
+      /*lint -e1055*/
       if (state_ == 0 && atomic_post_set(&state_) == 0) {
         return;
       }
@@ -73,7 +77,11 @@ class SpinMutex {
   ~SpinMutex() {
   }
  private:
+#ifdef OS_WINCE
+  volatile long state_;
+#else
   volatile unsigned int state_;
+#endif
 };
 
 /* Platform-indepenednt NON-RECURSIVE lock (mutex) wrapper
@@ -95,7 +103,7 @@ class Lock {
   Lock(bool is_recursive);
   ~Lock();
 
-  // Ackquire the lock. Must be called only once on a thread.
+  // Acquire the lock. Must be called only once on a thread.
   // Please consider using AutoLock to capture it.
   void Acquire();
   // Release the lock. Must be called only once on a thread after lock.
@@ -143,7 +151,7 @@ class AutoLock {
     : lock_(lock) { lock_.Acquire(); }
   ~AutoLock()     { lock_.Release();  }
  private:
-  Lock& GetLock(){ return lock_;     }
+  Lock& GetLock() { return lock_;     }
   Lock& lock_;
 
  private:

@@ -31,21 +31,24 @@
  */
 
 #include <errno.h>
-#include <fcntl.h>
 #include <sys/stat.h>
+#if !(defined(OS_WIN32)||defined(OS_WINCE))
+#include <fcntl.h>
 #include <unistd.h>
+#else
+#include <Windows.h>
+#endif
 #include "utils/logger.h"
 #include "utils/file_system.h"
-#include "config_profile/profile.h"
 #include "media_manager/pipe_streamer_adapter.h"
 
 namespace media_manager {
 
-CREATE_LOGGERPTR_GLOBAL(logger, "PipeStreamerAdapter")
+CREATE_LOGGERPTR_GLOBAL(logger_, "PipeStreamerAdapter")
 
 PipeStreamerAdapter::PipeStreamerAdapter(
-    const std::string& named_pipe_path)
-  : StreamerAdapter(new PipeStreamer(this, named_pipe_path)) {
+    const std::string& named_pipe_path, const std::string& app_storage_folder)
+  : StreamerAdapter(new PipeStreamer(this, named_pipe_path, app_storage_folder)) {
 }
 
 PipeStreamerAdapter::~PipeStreamerAdapter() {
@@ -53,65 +56,97 @@ PipeStreamerAdapter::~PipeStreamerAdapter() {
 
 PipeStreamerAdapter::PipeStreamer::PipeStreamer(
     PipeStreamerAdapter* const adapter,
-    const std::string& named_pipe_path)
+    const std::string& named_pipe_path,
+    const std::string& app_storage_folder)
   : Streamer(adapter),
     named_pipe_path_(named_pipe_path),
+    app_storage_folder_(app_storage_folder),
     pipe_fd_(0) {
+    if (!file_system::CreateDirectoryRecursively(app_storage_folder_)) {
+      LOG4CXX_ERROR(logger_, "Cannot create app storage folder "
+                    << app_storage_folder_ );
+      return;
+    }
+#if defined(OS_WIN32)||defined(OS_WINCE)
+      pipe_fd_=CreateNamedPipe(named_pipe_path_, PIPE_ACCESS_DUPLEX,  
+        PIPE_TYPE_BYTE|PIPE_READMODE_BYTE , 1, 0, 0, 1000, NULL);
+      if (pipe_fd_== INVALID_HANDLE_VALUE) {
+#else
+    if ((mkfifo(named_pipe_path_.c_str(),
+                S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) < 0)
+        && (errno != EEXIST)) {
+#endif
+      LOG4CXX_ERROR(logger_, "Cannot create pipe " << named_pipe_path_);
+    } else {
+      LOG4CXX_INFO(logger_, "Pipe " << named_pipe_path_
+                   << " was successfully created");
+    }
+}
+PipeStreamerAdapter::PipeStreamer::~PipeStreamer() {
+#if defined(OS_WIN32)||defined(OS_WINCE)
+  if(TRUE == CloseHandle(pipe_fd_)) {
+#else
+  if (0 == unlink(named_pipe_path_.c_str()) ) {
+#endif
+    LOG4CXX_INFO(logger_, "Pipe " << named_pipe_path_ << " was removed");
+  } else {
+    LOG4CXX_ERROR(logger_, "Error removing pipe " << named_pipe_path_);
+  }
 }
 
-PipeStreamerAdapter::PipeStreamer::~PipeStreamer() {
-}
 
 bool PipeStreamerAdapter::PipeStreamer::Connect() {
-  LOG4CXX_AUTO_TRACE(logger);
-  if (!file_system::CreateDirectoryRecursively(
-      profile::Profile::instance()->app_storage_folder())) {
-    LOG4CXX_ERROR(logger, "Cannot create app folder");
-    return false;
-  }
-
-  if ((mkfifo(named_pipe_path_.c_str(),
-              S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) < 0)
-      && (errno != EEXIST)) {
-    LOG4CXX_ERROR(logger, "Cannot create pipe "
-                  << named_pipe_path_);
-    return false;
-  }
-
+  LOG4CXX_AUTO_TRACE(logger_);
+#if defined(OS_WIN32)||defined(OS_WINCE)
+  if(!ConnectNamedPipe(pipe_fd_, NULL)) {
+#else
   pipe_fd_ = open(named_pipe_path_.c_str(), O_RDWR, 0);
   if (-1 == pipe_fd_) {
-    LOG4CXX_ERROR(logger, "Cannot open pipe for writing "
+#endif
+    LOG4CXX_ERROR(logger_, "Cannot open pipe for writing "
                   << named_pipe_path_);
     return false;
   }
 
-  LOG4CXX_INFO(logger, "Pipe " << named_pipe_path_
-                << " was successfuly created");
+  LOG4CXX_INFO(logger_, "Pipe " << named_pipe_path_
+                << " was successfuly opened for writing");
   return true;
 }
 
 void PipeStreamerAdapter::PipeStreamer::Disconnect() {
-  LOG4CXX_AUTO_TRACE(logger);
-  close(pipe_fd_);
-  unlink(named_pipe_path_.c_str());
+  LOG4CXX_AUTO_TRACE(logger_);
+#if defined(OS_WIN32)||defined(OS_WINCE)
+  if(FALSE == CloseHandle(pipe_fd_)) {
+#else
+  if (0 == close(pipe_fd_)) {
+#endif
+    LOG4CXX_INFO(logger_, "Pipe " << named_pipe_path_ << " was closed");
+  } else {
+    LOG4CXX_ERROR(logger_, "Error closing pipe " << named_pipe_path_);
+  }
 }
 
 bool PipeStreamerAdapter::PipeStreamer::Send(
     protocol_handler::RawMessagePtr msg) {
-  LOG4CXX_AUTO_TRACE(logger);
+  LOG4CXX_AUTO_TRACE(logger_);
+#if defined(OS_WIN32)||defined(OS_WINCE)
+  DWORD ret;
+  if(WriteFile(pipe_fd_, msg->data(), (DWORD)msg->data_size(), &ret, NULL) == FALSE) {
+#else
   ssize_t ret = write(pipe_fd_, msg->data(), msg->data_size());
   if (-1 == ret) {
-    LOG4CXX_ERROR(logger, "Failed writing data to pipe "
+#endif
+    LOG4CXX_ERROR(logger_, "Failed writing data to pipe "
                   << named_pipe_path_);
     return false;
   }
 
   if (static_cast<uint32_t>(ret) != msg->data_size()) {
-    LOG4CXX_WARN(logger, "Couldn't write all the data to pipe "
+    LOG4CXX_WARN(logger_, "Couldn't write all the data to pipe "
                  << named_pipe_path_);
   }
 
-  LOG4CXX_INFO(logger, "Streamer::sent " << msg->data_size());
+  LOG4CXX_INFO(logger_, "Streamer::sent " << msg->data_size());
   return true;
 }
 

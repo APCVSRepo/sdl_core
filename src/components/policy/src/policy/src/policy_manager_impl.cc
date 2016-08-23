@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2013, Ford Motor Company
+ Copyright (c) 2016, Ford Motor Company
  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
@@ -35,6 +35,7 @@
 #include <set>
 #include <queue>
 #include <iterator>
+#include <limits>
 #include "json/reader.h"
 #include "json/writer.h"
 #include "policy/policy_table.h"
@@ -43,30 +44,44 @@
 #include "utils/file_system.h"
 #include "utils/logger.h"
 #include "utils/date_time.h"
+#include "utils/make_shared.h"
 #include "policy/cache_manager.h"
 #include "policy/update_status_manager.h"
 #include "config_profile/profile.h"
+#include "utils/timer_task_impl.h"
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 __declspec(dllexport) policy::PolicyManager* CreateManager() {
 #else
 policy::PolicyManager* CreateManager() {
 #endif
-return new policy::PolicyManagerImpl();
+#if  defined(OS_WINCE)
+  profile::Profile::instance()->config_file_name(Global::RelativePathToAbsPath("smartDeviceLink.ini"));
+#else
+  profile::Profile::instance()->config_file_name("smartDeviceLink.ini");
+#endif
+  ENABLE_LOGGER(profile::Profile::instance()->logs_enabled());
+  return new policy::PolicyManagerImpl();
 }
+
+namespace {
+const uint32_t kDefaultRetryTimeoutInSec = 60u;
+}  // namespace
 
 namespace policy {
 
-CREATE_LOGGERPTR_GLOBAL(logger_, "PolicyManagerImpl")
+CREATE_LOGGERPTR_GLOBAL(logger_, "Policy")
 
 PolicyManagerImpl::PolicyManagerImpl()
-  : PolicyManager(),
-    listener_(NULL),
-    cache_(new CacheManager),
-    retry_sequence_timeout_(60),
-    retry_sequence_index_(0),
-    ignition_check(true) {
-}
+    : PolicyManager()
+    , listener_(NULL)
+    , cache_(new CacheManager)
+    , retry_sequence_timeout_(kDefaultRetryTimeoutInSec)
+    , retry_sequence_index_(0)
+    , timer_retry_sequence_("Retry sequence timer",
+                            new timer::TimerTaskImpl<PolicyManagerImpl>(
+                                this, &PolicyManagerImpl::RetrySequence))
+    , ignition_check(true) {}
 
 void PolicyManagerImpl::set_listener(PolicyListener* listener) {
   listener_ = listener;
@@ -84,7 +99,7 @@ utils::SharedPtr<policy_table::Table> PolicyManagerImpl::Parse(
     return new policy_table::Table(&value);
   } else {
     return utils::SharedPtr<policy_table::Table>();
-  } 
+  }
 }
 
 #else
@@ -98,7 +113,7 @@ utils::SharedPtr<policy_table::Table> PolicyManagerImpl::ParseArray(
     //For PT Update received from SDL Server.
     if (value["data"].size()!=0) {
       Json::Value data = value["data"];
-      //First Element in 
+      //First Element in
       return new policy_table::Table(&data[0]);
     } else {
       return new policy_table::Table(&value);
@@ -135,9 +150,9 @@ bool PolicyManagerImpl::LoadPT(const std::string& file,
   // Parse message into table struct
   utils::SharedPtr<policy_table::Table> pt_update = Parse(pt_content);
   #else
-  //Message Received from server unecnrypted with PTU in first element 
+  //Message Received from server unecnrypted with PTU in first element
   //of 'data' array. No Parsing was done by HMI.
-  utils::SharedPtr<policy_table::Table> pt_update = ParseArray(pt_content); 
+  utils::SharedPtr<policy_table::Table> pt_update = ParseArray(pt_content);
   #endif
   if (!pt_update) {
     LOG4CXX_WARN(logger_, "Parsed table pointer is 0.");
@@ -145,6 +160,11 @@ bool PolicyManagerImpl::LoadPT(const std::string& file,
     return false;
   }
 
+#if defined(OS_WIN32) || defined(OS_WINCE)
+  file_system::DeleteFileWindows(file);
+#else
+  file_system::DeleteFile(file);
+#endif
 
   if (!IsPTValid(pt_update, policy_table::PT_UPDATE)) {
     update_status_manager_.OnWrongUpdateReceived();
@@ -153,6 +173,12 @@ bool PolicyManagerImpl::LoadPT(const std::string& file,
 
   update_status_manager_.OnValidUpdateReceived();
   cache_->SaveUpdateRequired(false);
+
+  // Update finished, no need retry
+  if (timer_retry_sequence_.is_running()) {
+    LOG4CXX_INFO(logger_, "Stop retry sequence");
+    timer_retry_sequence_.Stop();
+  }
 
   {
     sync_primitives::AutoLock lock(apps_registration_lock_);
@@ -234,13 +260,13 @@ void PolicyManagerImpl::GetServiceUrls(const std::string& service_type,
   cache_->GetServiceUrls(service_type, end_points);
 }
 
-void PolicyManagerImpl::RequestPTUpdate() {
+bool PolicyManagerImpl::RequestPTUpdate() {
   LOG4CXX_AUTO_TRACE(logger_);
   utils::SharedPtr<policy_table::Table> policy_table_snapshot =
       cache_->GenerateSnapshot();
   if (!policy_table_snapshot) {
     LOG4CXX_ERROR(logger_, "Failed to create snapshot of policy table");
-    return;
+    return false;
   }
 
   IsPTValid(policy_table_snapshot, policy_table::PT_SNAPSHOT);
@@ -249,18 +275,17 @@ void PolicyManagerImpl::RequestPTUpdate() {
   Json::FastWriter writer;
   std::string message_string = writer.write(value);
 
-  LOG4CXX_DEBUG(logger_, "Snapshot contents is : " << message_string.c_str());
+  LOG4CXX_DEBUG(logger_, "Snapshot contents is : " << message_string );
 
   BinaryMessage update(message_string.begin(), message_string.end());
 
-
-  listener_->OnSnapshotCreated(update,
-                               RetrySequenceDelaysSeconds(),
-                               TimeoutExchange());
+  listener_->OnSnapshotCreated(update);
 
   // Need to reset update schedule since all currenly registered applications
   // were already added to the snapshot so no update for them required.
   update_status_manager_.ResetUpdateSchedule();
+
+  return true;
 }
 
 std::string PolicyManagerImpl::GetLockScreenIconUrl() const {
@@ -291,7 +316,10 @@ void PolicyManagerImpl::StartPTExchange() {
     }
 
     if (update_status_manager_.IsUpdateRequired()) {
-      RequestPTUpdate();
+      if (RequestPTUpdate() && !timer_retry_sequence_.is_running()) {
+        // Start retry sequency
+        timer_retry_sequence_.Start(NextRetryTimeout(), false);
+      }
     }
   }
 }
@@ -315,6 +343,11 @@ const std::vector<std::string> PolicyManagerImpl::GetAppRequestTypes(
   cache_->GetAppRequestTypes(policy_app_id, request_types);
   return request_types;
 }
+
+const VehicleInfo PolicyManagerImpl::GetVehicleInfo() const {
+  return cache_->GetVehicleInfo();
+}
+
 void PolicyManagerImpl::CheckPermissions(const PTString& app_id,
                                          const PTString& hmi_level,
                                           const PTString& rpc,
@@ -322,8 +355,8 @@ void PolicyManagerImpl::CheckPermissions(const PTString& app_id,
                                           CheckPermissionResult& result) {
   LOG4CXX_INFO(
     logger_,
-    "CheckPermissions for " << app_id.c_str() << " and rpc " << rpc.c_str() << " for "
-    << hmi_level.c_str() << " level.");
+    "CheckPermissions for " << app_id << " and rpc " << rpc << " for "
+    << hmi_level << " level.");
 
   cache_->CheckPermissions(app_id, hmi_level, rpc, result);
 }
@@ -363,7 +396,7 @@ void PolicyManagerImpl::SendNotificationOnPermissionsUpdated(
   PrepareNotificationData(functional_groupings, app_groups, app_group_permissions,
                           notification_data);
 
-  LOG4CXX_INFO(logger_, "Send notification for application_id:" << application_id.c_str());
+  LOG4CXX_INFO(logger_, "Send notification for application_id:" << application_id);
 
   std::string default_hmi;
   default_hmi = "NONE";
@@ -379,7 +412,7 @@ bool PolicyManagerImpl::CleanupUnpairedDevices() {
 }
 
 DeviceConsent PolicyManagerImpl::GetUserConsentForDevice(
-  const std::string& device_id) {
+  const std::string& device_id) const {
   LOG4CXX_AUTO_TRACE(logger_);
   return kDeviceAllowed;
 }
@@ -418,13 +451,13 @@ bool PolicyManagerImpl::GetInitialAppData(const std::string& application_id,
 void PolicyManagerImpl::AddDevice(const std::string& device_id,
                                   const std::string& connection_type) {
   LOG4CXX_INFO(logger_, "SetDeviceInfo");
-  LOG4CXX_DEBUG(logger_, "Device :" << device_id.c_str());
+  LOG4CXX_DEBUG(logger_, "Device :" << device_id);
 }
 
 void PolicyManagerImpl::SetDeviceInfo(const std::string& device_id,
                                       const DeviceInfo& device_info) {
   LOG4CXX_AUTO_TRACE(logger_);
-  LOG4CXX_DEBUG(logger_, "Device :" << device_id.c_str());
+  LOG4CXX_DEBUG(logger_, "Device :" << device_id);
 }
 
 PermissionConsent PolicyManagerImpl::EnsureCorrectPermissionConsent(
@@ -509,13 +542,18 @@ void PolicyManagerImpl::SetUserConsentForApp(
 }
 
 bool PolicyManagerImpl::GetDefaultHmi(const std::string& policy_app_id,
-                                      std::string* default_hmi) {
+                                      std::string* default_hmi) const {
   LOG4CXX_AUTO_TRACE(logger_);
-  return false;
+  const std::string device_id = GetCurrentDeviceId(policy_app_id);
+  DeviceConsent device_consent = GetUserConsentForDevice(device_id);
+  const std::string app_id =
+      policy::kDeviceAllowed != device_consent ?  kPreDataConsentId :
+                                                  policy_app_id;
+  return cache_->GetDefaultHMI(app_id, *default_hmi);
 }
 
 bool PolicyManagerImpl::GetPriority(const std::string& policy_app_id,
-                                    std::string* priority) {
+                                    std::string* priority) const {
   LOG4CXX_AUTO_TRACE(logger_);
   if (!priority) {
     LOG4CXX_WARN(logger_, "Input priority parameter is null.");
@@ -636,7 +674,7 @@ void PolicyManagerImpl::GetPermissionsForApp(
 }
 
 std::string& PolicyManagerImpl::GetCurrentDeviceId(
-  const std::string& policy_app_id) {
+  const std::string& policy_app_id) const {
   LOG4CXX_INFO(logger_, "GetDeviceInfo");
   last_device_id_ =
     listener()->OnCurrentDeviceIdUpdateRequired(policy_app_id);
@@ -661,7 +699,7 @@ void PolicyManagerImpl::OnSystemReady() {
 }
 
 uint32_t PolicyManagerImpl::GetNotificationsNumber(
-    const std::string& priority) {
+    const std::string& priority) const {
   LOG4CXX_AUTO_TRACE(logger_);
   return cache_->GetNotificationsNumber(priority);
 }
@@ -680,17 +718,23 @@ bool PolicyManagerImpl::IsPTValid(
     rpc::ValidationReport report("policy_table");
     policy_table->ReportErrors(&report);
     LOG4CXX_DEBUG(logger_,
-                 "Errors: " << rpc::PrettyFormat(report).c_str());
+                 "Errors: " << rpc::PrettyFormat(report));
     return false;
   }
   return true;
 }
 
-bool PolicyManagerImpl::ExceededDays() {
+const PolicySettings& PolicyManagerImpl::get_settings() const {
+  DCHECK(settings_);
+  return *settings_;
+}
 
-  TimevalStruct current_time = date_time::DateTime::getCurrentTime();
-  const int kSecondsInDay = 60 * 60 * 24;
-  int days = current_time.tv_sec / kSecondsInDay;
+bool PolicyManagerImpl::ExceededDays() {
+    LOG4CXX_AUTO_TRACE(logger_);
+
+    TimevalStruct current_time = date_time::DateTime::getCurrentTime();
+    const int kSecondsInDay = 60 * 60 * 24;
+  const int days = current_time.tv_sec / kSecondsInDay;
 
   return 0 == cache_->DaysBeforeExchange(days);
 }
@@ -699,6 +743,7 @@ void PolicyManagerImpl::KmsChanged(int kilometers) {
   LOG4CXX_AUTO_TRACE(logger_);
   if (0 == cache_->KilometersBeforeExchange(kilometers)) {
     LOG4CXX_INFO(logger_, "Enough kilometers passed to send for PT update.");
+    update_status_manager_.ScheduleUpdate();
     StartPTExchange();
   }
 }
@@ -717,16 +762,25 @@ std::string PolicyManagerImpl::GetPolicyTableStatus() const {
   return update_status_manager_.StringifiedUpdateStatus();
 }
 
-int PolicyManagerImpl::NextRetryTimeout() {
+uint32_t PolicyManagerImpl::NextRetryTimeout() {
   sync_primitives::AutoLock auto_lock(retry_sequence_lock_);
   LOG4CXX_DEBUG(logger_, "Index: " << retry_sequence_index_);
-  int next = 0;
-  if (!retry_sequence_seconds_.empty()
-      && retry_sequence_index_ < retry_sequence_seconds_.size()) {
-    next = retry_sequence_seconds_[retry_sequence_index_];
-    ++retry_sequence_index_;
+  uint32_t next = 0u;
+  if (retry_sequence_seconds_.empty() ||
+      retry_sequence_index_ >= retry_sequence_seconds_.size()) {
+    return next;
   }
-  return next;
+
+  ++retry_sequence_index_;
+
+  for (uint32_t i = 0u; i < retry_sequence_index_; ++i) {
+    next += retry_sequence_seconds_[i];
+    // According to requirement APPLINK-18244
+    next += retry_sequence_timeout_;
+  }
+
+  // Return miliseconds
+  return next * date_time::DateTime::MILLISECONDS_IN_SECOND;
 }
 
 void PolicyManagerImpl::RefreshRetrySequence() {
@@ -763,38 +817,36 @@ void PolicyManagerImpl::OnUpdateStarted() {
   cache_->SaveUpdateRequired(true);
 }
 
-void PolicyManagerImpl::PTUpdatedAt(int kilometers, int days_after_epoch) {
+void PolicyManagerImpl::PTUpdatedAt(Counters counter, int value) {
   LOG4CXX_AUTO_TRACE(logger_);
-  LOG4CXX_INFO(logger_,
-               "Kilometers: " << kilometers << " Days: " << days_after_epoch);
   cache_->SetCountersPassedForSuccessfulUpdate(
-    kilometers, days_after_epoch);
+    counter, value);
   cache_->ResetIgnitionCycles();
 }
 
 void PolicyManagerImpl::Increment(usage_statistics::GlobalCounterId type) {
   LOG4CXX_INFO(logger_, "Increment without app id" );
-  sync_primitives::AutoLock locker(statistics_lock_);
+  cache_->Increment(type);
 }
 
 void PolicyManagerImpl::Increment(const std::string& app_id,
-                                  usage_statistics::AppCounterId type){
-  LOG4CXX_DEBUG(logger_, "Increment " << app_id.c_str() << " AppCounter: " << type);
-  sync_primitives::AutoLock locker(statistics_lock_);
+                                  usage_statistics::AppCounterId type) {
+  LOG4CXX_DEBUG(logger_, "Increment " << app_id << " AppCounter: " << type);
+  cache_->Increment(app_id, type);
 }
 
 void PolicyManagerImpl::Set(const std::string& app_id,
                             usage_statistics::AppInfoId type,
                             const std::string& value) {
-  LOG4CXX_INFO(logger_, "Set " << app_id.c_str());
-  sync_primitives::AutoLock locker(statistics_lock_);
+  LOG4CXX_INFO(logger_, "Set " << app_id);
+  cache_->Set(app_id, type, value);
 }
 
 void PolicyManagerImpl::Add(const std::string& app_id,
                             usage_statistics::AppStopwatchId type,
                             int32_t timespan_seconds) {
-  LOG4CXX_INFO(logger_, "Add " << app_id.c_str());
-  sync_primitives::AutoLock locker(statistics_lock_);
+  LOG4CXX_INFO(logger_, "Add " << app_id);
+  cache_->Add(app_id, type, timespan_seconds);
 }
 
 bool PolicyManagerImpl::IsApplicationRevoked(const std::string& app_id) const {
@@ -829,11 +881,11 @@ void PolicyManagerImpl::RemovePendingPermissionChanges(
   app_permissions_diff_.erase(app_id);
 }
 
-bool PolicyManagerImpl::CanAppKeepContext(const std::string& app_id) {
+bool PolicyManagerImpl::CanAppKeepContext(const std::string& app_id) const {
   return cache_->CanAppKeepContext(app_id);
 }
 
-bool PolicyManagerImpl::CanAppStealFocus(const std::string& app_id) {
+bool PolicyManagerImpl::CanAppStealFocus(const std::string& app_id) const {
   return cache_->CanAppStealFocus(app_id);
 }
 
@@ -909,8 +961,8 @@ bool PolicyManagerImpl::ResetPT(const std::string& file_name) {
 bool PolicyManagerImpl::CheckAppStorageFolder() const {
   LOG4CXX_AUTO_TRACE(logger_);
   const std::string app_storage_folder =
-      profile::Profile::instance()->app_storage_folder();
-  LOG4CXX_DEBUG(logger_, "AppStorageFolder " << app_storage_folder.c_str());
+      get_settings().app_storage_folder();
+  LOG4CXX_DEBUG(logger_, "AppStorageFolder " << app_storage_folder);
   if (!file_system::DirectoryExists(app_storage_folder)) {
     LOG4CXX_WARN(logger_,
                  "Storage directory doesn't exist " << app_storage_folder);
@@ -926,13 +978,23 @@ bool PolicyManagerImpl::CheckAppStorageFolder() const {
   return true;
 }
 
-bool PolicyManagerImpl::InitPT(const std::string& file_name) {
+bool PolicyManagerImpl::InitPT(const std::string& file_name,
+                               const PolicySettings* settings) {
   LOG4CXX_AUTO_TRACE(logger_);
+  settings_ = settings;
   if (!CheckAppStorageFolder()) {
     LOG4CXX_ERROR(logger_, "Can not read/write into AppStorageFolder");
     return false;
   }
-  const bool ret = cache_->Init(file_name);
+#ifdef OS_WINCE
+  std::string tmp = file_name;
+  if (tmp[0] != '\\' && tmp[0] != '/') {
+    tmp = Global::RelativePathToAbsPath(tmp);
+  }
+  const bool ret = cache_->Init(tmp, settings);
+#else
+  const bool ret = cache_->Init(file_name, settings);
+#endif
   if (ret) {
     RefreshRetrySequence();
     update_status_manager_.OnPolicyInit(cache_->UpdateRequired());
@@ -953,5 +1015,18 @@ void PolicyManagerImpl::set_cache_manager(
   cache_ = cache_manager;
 }
 
-}  //  namespace policy
+void PolicyManagerImpl::RetrySequence() {
+  LOG4CXX_INFO(logger_, "Start new retry sequence");
+  RequestPTUpdate();
 
+  uint32_t timeout = NextRetryTimeout();
+
+  if (!timeout && timer_retry_sequence_.is_running()) {
+    timer_retry_sequence_.Stop();
+    return;
+  }
+
+  timer_retry_sequence_.Start(timeout, false);
+}
+
+}  //  namespace policy

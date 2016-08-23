@@ -62,7 +62,7 @@ class SocketStreamerAdapter : public StreamerAdapter {
 
    private:
     std::string ip_;
-    int32_t     port_;
+    uint16_t    port_;
     std::string header_;
 
     int32_t     socket_fd_;

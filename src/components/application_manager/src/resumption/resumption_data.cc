@@ -37,15 +37,10 @@
 
 namespace resumption {
 
-CREATE_LOGGERPTR_GLOBAL(logger_, "ResumptionData")
+CREATE_LOGGERPTR_GLOBAL(logger_, "Resumption")
 
 ResumptionData::ResumptionData():
   resumption_lock_(true) {
-}
-
-bool ResumptionData::Init() {
-  LOG4CXX_AUTO_TRACE(logger_);
-  return true;
 }
 
 smart_objects::SmartObject ResumptionData::GetApplicationCommands(

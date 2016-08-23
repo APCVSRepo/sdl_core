@@ -483,9 +483,9 @@ CommandSharedPtr MobileCommandFactory::CreateCommand(
     case mobile_apis::FunctionID::DialNumberID: {
       if ((*message)[strings::params][strings::message_type]
           == static_cast<int>(application_manager::MessageType::kResponse)) {
-        command = utils::MakeShared<commands::DialNumberResponse>(message);
+        return  new commands::DialNumberResponse(message);
       } else {
-        command = utils::MakeShared<commands::DialNumberRequest>(message);
+        return new commands::DialNumberRequest(message);
       }
       break;
     }
@@ -532,8 +532,9 @@ CommandSharedPtr MobileCommandFactory::CreateCommand(
     case mobile_apis::FunctionID::OnHMIStatusID: {
       if (origin == commands::Command::ORIGIN_MOBILE) {
         command = utils::MakeShared<commands::OnHMIStatusNotificationFromMobile>(message);
+      } else {
+        command = utils::MakeShared<commands::OnHMIStatusNotification>(message);
       }
-      command = utils::MakeShared<commands::OnHMIStatusNotification>(message);
       break;
     }
     case mobile_apis::FunctionID::OnKeyboardInputID: {

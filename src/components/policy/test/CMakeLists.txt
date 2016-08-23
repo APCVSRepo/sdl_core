@@ -1,4 +1,4 @@
-# Copyright (c) 2013-2014, Ford Motor Company
+# Copyright (c) 2015, Ford Motor Company
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -30,6 +30,7 @@
 
 include_directories(
   include
+  ${COMPONENTS_DIR}
   ${GMOCK_INCLUDE_DIRECTORY}
   ${JSONCPP_INCLUDE_DIRECTORY}
   ${COMPONENTS_DIR}/policy/src/policy/include/
@@ -37,32 +38,66 @@ include_directories(
   ${COMPONENTS_DIR}/rpc_base/include
   ${COMPONENTS_DIR}/config_profile/include
   ${COMPONENTS_DIR}/utils/include/
-
+  ${COMPONENTS_DIR}/policy/src/policy/policy_table/table_struct
+  ${COMPONENTS_DIR}/policy/src/policy/policy_table/
+  ${COMPONENTS_DIR}/policy/test/include/
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+	include_directories(
+		${CMAKE_SOURCE_DIR}/include/win32
+		${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+		${CMAKE_SOURCE_DIR}/src/3rd_party-static/sqlite3-3.11.1
+	)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+    include_directories(
+      ${CMAKE_SOURCE_DIR}/include/wince
+      ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+      ${SQLITE3_INCLUDE_DIRECTORY}
+      ${COMPONENTS_DIR}/utils/include
+      ${CMAKE_SOURCE_DIR}/src/3rd_party-static/sdk_ext/include
+    )
+endif()
+
 set(testLibraries
-  gtest
   gmock
   Utils
   Policy
   UsageStatistics
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+  list(APPEND testLibraries sdk_ext)
+endif()
+
 set(testSources
-  usage_statistics_test.cc    
-  shared_library_test.cc    
-  generated_code_test.cc #APPLINK-10657
+  counter_test.cc
+  shared_library_test.cc
+  generated_code_test.cc
   policy_manager_impl_test.cc
+  update_status_manager_test.cc
 )
 
-  include_directories(${COMPONENTS_DIR}/policy/src/policy/policy_table/table_struct)
-  list (APPEND testSources
-    sql_pt_representation_test.cc
-  )
+list (APPEND testSources
+  sql_pt_representation_test.cc
+)
 
 create_test("policy_test" "${testSources}" "${testLibraries}")
 
 file(COPY valid_sdl_pt_update.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 file(COPY sdl_preloaded_pt.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY PTU.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY PTU2.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY PTU3.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY PTU4.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ptu_requestType.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY ptu2_requestType.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 file(COPY log4cxx.properties DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 file(COPY smartDeviceLink.ini DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY smartDeviceLink2.ini DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY smartDeviceLink3.ini DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY sdl_pt_first_update.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY sdl_pt_second_update.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+file(COPY sdl_pt_update.json DESTINATION ${CMAKE_CURRENT_BINARY_DIR})

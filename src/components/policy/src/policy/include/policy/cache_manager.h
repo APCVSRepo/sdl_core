@@ -38,15 +38,17 @@
 #include "utils/shared_ptr.h"
 #include "policy/pt_representation.h"
 #include "policy/pt_ext_representation.h"
-#include "usage_statistics/statistics_manager.h"
+#include "policy/usage_statistics/statistics_manager.h"
 #include "policy/cache_manager_interface.h"
+#include "utils/threads/thread.h"
+#include "utils/threads/thread_delegate.h"
 
 #include "utils/lock.h"
-#include "utils/timer_thread.h"
 #include "utils/conditional_variable.h"
 #include "policy/policy_types.h"
 
 namespace policy {
+class PolicySettings;
 
 class CacheManager : public CacheManagerInterface {
  public:
@@ -88,11 +90,10 @@ class CacheManager : public CacheManagerInterface {
   virtual int KilometersBeforeExchange(int current);
 
   /**
-   * @brief Sets kilometers and days after epoch, that passed for recieved
-   * successful PT UPdate
+   * @brief Sets counter value that passed for recieved successful PT UPdate
    */
-  virtual bool SetCountersPassedForSuccessfulUpdate(int kilometers,
-                                                    int days_after_epoch);
+  virtual bool SetCountersPassedForSuccessfulUpdate(Counters counter,
+                                                    int value);
 
   /**
    * Gets value in days before next update policy table
@@ -127,7 +128,7 @@ class CacheManager : public CacheManagerInterface {
   /**
    * @brief Get information about vehicle
    */
-  virtual VehicleData GetVehicleData();
+  virtual const VehicleInfo GetVehicleInfo() const;
 
   /**
    * @brief Allows to update 'vin' field in module_meta table.
@@ -169,7 +170,7 @@ class CacheManager : public CacheManagerInterface {
    * depending on application priority.
    * @param priority Priority of application
    */
-  virtual int GetNotificationsNumber(const std::string& priority);
+  virtual rpc::policy_table_interface_base::NumberOfNotificationsType GetNotificationsNumber(const std::string& priority);
 
   /**
    * @brief Get priority for given application
@@ -178,13 +179,13 @@ class CacheManager : public CacheManagerInterface {
    * @return true, if succedeed, otherwise - false
    */
   virtual bool GetPriority(const std::string& policy_app_id,
-                           std::string& priority);
+                           std::string& priority) const OVERRIDE;
 
   /**
    * @brief Initialized Policy Table (load)
    * @return bool Success of operation
    */
-  bool Init(const std::string& file_name);
+  bool Init(const std::string& file_name, const PolicySettings *settings);
 
   /**
    * @brief Get snapshot of Policy Table
@@ -288,24 +289,24 @@ class CacheManager : public CacheManagerInterface {
    * @param app_id Application id
    * @return bool Allowed/disallowed.
    */
-  bool CanAppKeepContext(const std::string& app_id);
+  bool CanAppKeepContext(const std::string& app_id) const OVERRIDE;
 
   /**
    * @brief Is application allowed to move foreground at will?
    * @param app_id Application id
    * @return bool Allowed/disallowed.
    */
-  bool CanAppStealFocus(const std::string& app_id);
+  bool CanAppStealFocus(const std::string& app_id) const;
 
   /**
-   * @brief Get default_hmi for given application
+   * @brief Gets default_hmi for given application
    * @param policy_app_id Unique application id
    * @param default_hmi Default HMI level for application or empty, if value was
    * not set
    * @return true, if succedeed, otherwise - false
    */
   bool GetDefaultHMI(const std::string& app_id,
-                     std::string &default_hmi);
+                     std::string &default_hmi) const;
 
   /**
    * @brief Reset user consent for device data and applications permissions
@@ -322,7 +323,7 @@ class CacheManager : public CacheManagerInterface {
    */
   bool GetUserPermissionsForDevice(const std::string& device_id,
                                    StringArray &consented_groups,
-                                   StringArray &disallowed_groups);
+                                   StringArray& disallowed_groups) const;
 
   /**
    * @brief Gets list of groups permissions from policy table
@@ -343,7 +344,7 @@ class CacheManager : public CacheManagerInterface {
    */
   bool GetDeviceGroupsFromPolicies(
       rpc::policy_table_interface_base::Strings &groups,
-      rpc::policy_table_interface_base::Strings &preconsented_groups);
+      rpc::policy_table_interface_base::Strings& preconsented_groups) const;
 
   /**
    * @brief Add's information about mobile device in Policy Table.
@@ -600,9 +601,9 @@ class CacheManager : public CacheManagerInterface {
    * The rules are:
    * 1. Add new fields (known to PoliciesManager) & sub-sections if such are
    * present in the updated Preloaded PT
-   * 2. "vehicle_make", “model”, “year” – leave the fields & values as they were
+   * 2. "vehicle_make", “model? “year??leave the fields & values as they were
    * in the database
-   * 3. For all other fields – overwrite the values with the new ones from preloaded PT.
+   * 3. For all other fields ?overwrite the values with the new ones from preloaded PT.
    *
    * @param new_pt the policy table loaded from updated preload JSON file.
    *
@@ -634,7 +635,7 @@ class CacheManager : public CacheManagerInterface {
   /**
    * @brief MergeAP Allows to merge ApplicationPolicies section by definite relues.
    * The rules are:
-   * 1. Leave “<appID>” sub-sections as they were in the database (fields & their values).
+   * 1. Leave ?appID>?sub-sections as they were in the database (fields & their values).
    * 2. Over-write "default", "device", "pre_DataConsent" subsections.
    *
    * @param new_pt the policy table loaded from updated preload JSON file.
@@ -664,10 +665,18 @@ class CacheManager : public CacheManagerInterface {
   void MergeCFM(const policy_table::PolicyTable& new_pt,
                 policy_table::PolicyTable& pt);
 
+   const PolicySettings& get_settings() const;
 
 #ifdef BUILD_TESTS
  utils::SharedPtr<policy_table::Table> GetPT() const {
      return pt_;
+ }
+ policy::VehicleInfo GetModuleVehicleInfo() const {
+   policy::VehicleInfo vehicle_info;
+   vehicle_info.vehicle_make = *pt_->policy_table.module_config.vehicle_make;
+   vehicle_info.vehicle_model = *pt_->policy_table.module_config.vehicle_model;
+   vehicle_info.vehicle_year = *pt_->policy_table.module_config.vehicle_year;
+   return vehicle_info;
  }
 #endif
 
@@ -703,7 +712,6 @@ private:
   bool IsPermissionsCalculated(const std::string& device_id,
                                const std::string& policy_app_id,
                                policy::Permissions& permission);
-
 private:
   /**
    * @brief Checks, if input string is known service represented by number, than
@@ -751,6 +759,7 @@ private:
   threads::Thread* backup_thread_;
   sync_primitives::Lock backuper_locker_;
   BackgroundBackuper* backuper_;
+  const PolicySettings* settings_;
 };
 }  // namespace policy
 #endif // SRC_COMPONENTS_POLICY_INCLUDE_CACHE_MANAGER_H_

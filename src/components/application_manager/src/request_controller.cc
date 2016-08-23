@@ -36,6 +36,7 @@
 #include "application_manager/commands/command_request_impl.h"
 #include "application_manager/commands/hmi/request_to_hmi.h"
 #include "utils/make_shared.h"
+#include "utils/timer_task_impl.h"
 
 namespace application_manager {
 
@@ -43,20 +44,27 @@ namespace request_controller {
 
 using namespace sync_primitives;
 
-CREATE_LOGGERPTR_GLOBAL(logger_, "RequestController");
+CREATE_LOGGERPTR_GLOBAL(logger_, "RequestController")
 
 RequestController::RequestController()
-  : pool_state_(UNDEFINED),
-    pool_size_(profile::Profile::instance()->thread_pool_size()),
-    timer_("RequestCtrlTimer", this, &RequestController::onTimer, true),
-    is_low_voltage_(false) {
+    : pool_state_(UNDEFINED),
+      pool_size_(profile::Profile::instance()->thread_pool_size()),
+      timer_("AM RequestCtrlTimer",
+             new timer::TimerTaskImpl<RequestController>(
+                this,
+                &RequestController::onTimer)),
+      stop_flag_(false),
+      is_low_voltage_(false) {
   LOG4CXX_AUTO_TRACE(logger_);
   InitializeThreadpool();
-  timer_.start(default_sleep_time_);
+  timer_.Start(0, true);
 }
 
 RequestController::~RequestController() {
   LOG4CXX_AUTO_TRACE(logger_);
+  stop_flag_ = true;
+  timer_condition_.Broadcast();
+  timer_.Stop();
   if (pool_state_ != TPoolState::STOPPED) {
     DestroyThreadpool();
   }
@@ -362,9 +370,27 @@ void RequestController::onTimer() {
   LOG4CXX_AUTO_TRACE(logger_);
   LOG4CXX_DEBUG(logger_, "ENTER Waiting fore response count: "
                 << waiting_for_response_.Size());
-  RequestInfoPtr probably_expired =
+
+  while (!stop_flag_){
+    RequestInfoPtr probably_expired =
       waiting_for_response_.FrontWithNotNullTimeout();
-  while (probably_expired && probably_expired->isExpired()) {
+    if (!probably_expired) {
+      sync_primitives::AutoLock auto_lock(timer_lock);
+      timer_condition_.Wait(auto_lock);
+      continue;
+    }
+    if (!probably_expired->isExpired()) {
+      LOG4CXX_INFO(logger_, "onTimer:isExpired");
+      sync_primitives::AutoLock auto_lock(timer_lock);
+      const TimevalStruct current_time = date_time::DateTime::getCurrentTime();
+      const TimevalStruct end_time = probably_expired->end_time();
+      if (current_time < end_time) {
+        const uint32_t msecs = static_cast<uint32_t>(date_time::DateTime::getmSecs(end_time - current_time));
+        LOG4CXX_DEBUG(logger_, "Sleep for " << msecs << " millisecs");
+        timer_condition_.WaitFor(auto_lock, msecs);
+      }
+      continue;
+    }
     LOG4CXX_INFO(logger_, "Timeout for "
                  << (RequestInfo::HMIRequest
                      == probably_expired ->requst_type() ? "HMI": "Mobile")
@@ -390,7 +416,7 @@ void RequestController::onTimer() {
       }
     }
   }
-  UpdateTimer();
+
   LOG4CXX_DEBUG(logger_, "EXIT Waiting for response count : "
                 << waiting_for_response_.Size());
 }
@@ -470,49 +496,8 @@ void RequestController::Worker::exitThreadMain() {
 }
 
 void RequestController::UpdateTimer() {
-  LOG4CXX_AUTO_TRACE(logger_);
-  RequestInfoPtr front = waiting_for_response_.FrontWithNotNullTimeout();
-  if (front) {
-    const TimevalStruct current_time = date_time::DateTime::getCurrentTime();
-    const TimevalStruct end_time = front->end_time();
-    if (current_time < end_time) {
-      const uint32_t msecs =static_cast<uint32_t>(date_time::DateTime::getmSecs(end_time - current_time) );
-      LOG4CXX_DEBUG(logger_, "Sleep for " << msecs << " millisecs" );
-      // Timeout for bigger than 5 minutes is a mistake
-
-      timer_.updateTimeOut(msecs);
-    } else {
-#ifdef OS_WIN32
-			LOG4CXX_WARN(logger_, "Request app_id: " << front->app_id()
-				<< " correlation_id: " << front->requestId()
-				<< " is expired. "
-				<< "End time: "
-				<< end_time.tv_sec
-				<< " Current time: "
-				<< current_time.tv_sec
-				<< " Diff (current - end): "
-				<< current_time.tv_sec - end_time.tv_sec
-				<< " Request timeout (sec): ");
-#else
-      LOG4CXX_WARN(logger_, "Request app_id: " << front->app_id()
-                   << " correlation_id: " << front->requestId()
-                   << " is expired. "
-                   << "End time (ms): "
-                   << date_time::DateTime::getmSecs(end_time)
-                   << " Current time (ms): "
-                   << date_time::DateTime::getmSecs(current_time)
-                   << " Diff (current - end) (ms): "
-                   << date_time::DateTime::getmSecs(current_time - end_time)
-                   << " Request timeout (sec): "
-                   << front->timeout_msec()/date_time::DateTime::MILLISECONDS_IN_SECOND);
-#endif
-      timer_.updateTimeOut(0);
-    }
-  } else {
-    LOG4CXX_DEBUG(logger_, "Sleep for default sleep time "
-                  << default_sleep_time_ << " milliseconds.");
-    timer_.updateTimeOut(default_sleep_time_);
-  }
+  LOG4CXX_TRACE(logger_,"UpdateTimer");
+  timer_condition_.NotifyOne();
 }
 
 }  //  namespace request_controller

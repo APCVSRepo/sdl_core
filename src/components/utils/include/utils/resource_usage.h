@@ -33,9 +33,12 @@
 #ifndef SRC_COMPONENTS_UTILS_INCLUDE_UTILS_RESOURCE_USAGE_H_
 #define SRC_COMPONENTS_UTILS_INCLUDE_UTILS_RESOURCE_USAGE_H_
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include "sched.h"
 #include <stdint.h>
+#ifdef BUILD_TESTS
+#include "gtest/gtest.h"
+#endif
 #else
 #include <sys/resource.h>
 #endif
@@ -61,12 +64,12 @@ struct ResourseUsage {
 };
 
 class Resources {
-public:
+  public:
   typedef uint32_t MemInfo;
 #if defined(__QNXNTO__)
   typedef procfs_info PidStats;
 
-#elif defined(OS_LINUX) || defined(OS_WIN32)
+#elif defined(OS_LINUX) || defined(OS_WIN32) || defined(OS_WINCE)
 
   struct PidStats {
     int pid;

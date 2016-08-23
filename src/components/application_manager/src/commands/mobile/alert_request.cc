@@ -66,12 +66,8 @@ bool AlertRequest::Init() {
   /* Timeout in milliseconds.
      If omitted a standard value of 10000 milliseconds is used.*/
   if ((*message_)[strings::msg_params].keyExists(strings::duration)) {
-		default_timeout_ =
-#ifdef MODIFY_FUNCTION_SIGN
-			10000000;
-#else
-			(*message_)[strings::msg_params][strings::duration].asUInt();
-#endif
+    default_timeout_ =
+        (*message_)[strings::msg_params][strings::duration].asUInt();
   } else {
     const int32_t def_value = 5000;
     default_timeout_ = def_value;
@@ -97,16 +93,22 @@ void AlertRequest::Run() {
     // Invalid command, abort execution
     return;
   }
+  bool tts_chunks_exists = (*message_)[strings::msg_params].keyExists(strings::tts_chunks);
+  size_t length_tts_chunks = 0;
 
-  if ((*message_)[strings::msg_params].keyExists(strings::tts_chunks)) {
-    if (0 < (*message_)[strings::msg_params][strings::tts_chunks].length()) {
-      awaiting_tts_speak_response_ = true;
-    }
+  if (tts_chunks_exists) {
+    length_tts_chunks = (*message_)[strings::msg_params][strings::tts_chunks].length();
   }
+
+  if ((tts_chunks_exists && length_tts_chunks) ||
+      ((*message_)[strings::msg_params].keyExists(strings::play_tone) &&
+      (*message_)[strings::msg_params][strings::play_tone].asBool())) {
+    awaiting_tts_speak_response_ = true;
+  }
+
   SendAlertRequest(app_id);
-  SendPlayToneNotification(app_id);
   if (awaiting_tts_speak_response_) {
-    SendSpeakRequest(app_id);
+    SendSpeakRequest(app_id, tts_chunks_exists, length_tts_chunks);
   }
 }
 
@@ -235,6 +237,11 @@ void AlertRequest::on_event(const event_engine::Event& event) {
     is_alert_succeeded_ = false;
     alert_result_ = tts_speak_result_;
   }
+
+  if (mobile_apis::Result::WARNINGS == tts_speak_result_) {
+    alert_result_ = mobile_apis::Result::WARNINGS;
+  }
+
   SendResponse(is_alert_succeeded_, alert_result_,
                response_info.empty() ? NULL : response_info.c_str(),
                &alert_response_params_);
@@ -268,7 +275,8 @@ bool AlertRequest::Validate(uint32_t app_id) {
   //ProcessSoftButtons checks strings on the contents incorrect character
 
   mobile_apis::Result::eType processing_result =
-      MessageHelper::ProcessSoftButtons((*message_)[strings::msg_params], app);
+      MessageHelper::ProcessSoftButtons((*message_)[strings::msg_params], app,
+          application_manager::ApplicationManagerImpl::instance()->GetPolicyHandler());
 
   if (mobile_apis::Result::SUCCESS != processing_result) {
     LOG4CXX_ERROR(logger_, "INVALID_DATA!");
@@ -333,11 +341,7 @@ void AlertRequest::SendAlertRequest(int32_t app_id) {
   }
   // app_id
   msg_params[strings::app_id] = app_id;
-#ifdef MODIFY_FUNCTION_SIGN
-	msg_params[strings::duration] = (*message_)[strings::msg_params][strings::duration];
-#else
-	msg_params[strings::duration] = default_timeout_;
-#endif
+  msg_params[strings::duration] = default_timeout_;
 
   // NAVI platform progressIndicator
   if ((*message_)[strings::msg_params].keyExists(strings::progress_indicator)) {
@@ -361,38 +365,26 @@ void AlertRequest::SendAlertRequest(int32_t app_id) {
   }
 }
 
-void AlertRequest::SendSpeakRequest(int32_t app_id) {
+void AlertRequest::SendSpeakRequest(int32_t app_id, bool tts_chunks_exists,
+                                    size_t length_tts_chunks) {
   LOG4CXX_AUTO_TRACE(logger_);
   using namespace hmi_apis;
   using namespace smart_objects;
   // crate HMI speak request
   SmartObject msg_params = smart_objects::SmartObject(SmartType_Map);
-
-  msg_params[hmi_request::tts_chunks] =
-      smart_objects::SmartObject(SmartType_Array);
-  msg_params[hmi_request::tts_chunks] =
-    (*message_)[strings::msg_params][strings::tts_chunks];
+  if (tts_chunks_exists && length_tts_chunks) {
+    msg_params[hmi_request::tts_chunks] =
+        smart_objects::SmartObject(SmartType_Array);
+    msg_params[hmi_request::tts_chunks] =
+        (*message_)[strings::msg_params][strings::tts_chunks];
+  }
+  if ((*message_)[strings::msg_params].keyExists(strings::play_tone) &&
+      (*message_)[strings::msg_params][strings::play_tone].asBool()) {
+    msg_params[strings::play_tone] = true;
+  }
   msg_params[strings::app_id] = app_id;
   msg_params[hmi_request::speak_type] = Common_MethodName::ALERT;
   SendHMIRequest(FunctionID::TTS_Speak, &msg_params, true);
-}
-
-void AlertRequest::SendPlayToneNotification(int32_t app_id) {
-  LOG4CXX_AUTO_TRACE(logger_);
-  using namespace hmi_apis;
-  using namespace smart_objects;
-
-  // check playtone parameter
-  if ((*message_)[strings::msg_params].keyExists(strings::play_tone)) {
-    if ((*message_)[strings::msg_params][strings::play_tone].asBool()) {
-      // crate HMI basic communication playtone request
-      SmartObject msg_params = smart_objects::SmartObject(SmartType_Map);
-      msg_params[strings::app_id] = app_id;
-      msg_params[strings::method_name] = Common_MethodName::ALERT;
-      CreateHMINotification(FunctionID::BasicCommunication_PlayTone,
-                            msg_params);
-    }
-  }
 }
 
 bool AlertRequest::CheckStringsOfAlertRequest() {

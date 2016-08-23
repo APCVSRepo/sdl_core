@@ -35,10 +35,12 @@
 #ifndef SRC_COMPONENTS_TRANSPORT_MANAGER_INCLUDE_TRANSPORT_MANAGER_TRANSPORT_ADAPTER_THREADED_SOCKET_CONNECTION_H_
 #define SRC_COMPONENTS_TRANSPORT_MANAGER_INCLUDE_TRANSPORT_MANAGER_TRANSPORT_ADAPTER_THREADED_SOCKET_CONNECTION_H_
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include "pthread.h"
-#include <WINSOCK2.H> 
-#include <stdio.h> 
+#ifndef _WINSOCKAPI_
+#include <winsock2.h>
+#endif
+#include <stdio.h>
 #else
 #include <poll.h>
 #endif
@@ -86,6 +88,13 @@ class ThreadedSocketConnection : public Connection {
    * @return Information about possible reason of thread creation error.
    */
   TransportAdapter::Error Start();
+
+  /**
+   * @brief Checks is queue with frames to send empty or not.
+   *
+   * @return Information about queue is empty or not.
+   */
+  bool IsFramesToSendQueueEmpty() const;
 
   /**
    * @brief Set variable that hold socket No.
@@ -148,7 +157,7 @@ class ThreadedSocketConnection : public Connection {
     ThreadedSocketConnection* connection_;
   };
   
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	int CreatePipe();
 #endif
 
@@ -162,7 +171,7 @@ class ThreadedSocketConnection : public Connection {
   bool Send();
   void Abort();
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   friend void* StartThreadedSocketConnection(void*);
 #endif
 
@@ -179,7 +188,6 @@ class ThreadedSocketConnection : public Connection {
   bool unexpected_disconnect_;
   const DeviceUID device_uid_;
   const ApplicationHandle app_handle_;
-
   threads::Thread* thread_;
 };
 }  // namespace transport_adapter

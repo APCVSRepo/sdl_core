@@ -33,13 +33,10 @@
 #ifndef SRC_COMPONENTS_CONNECTION_HANDLER_INCLUDE_CONNECTION_HANDLER_DEVICE_H_
 #define SRC_COMPONENTS_CONNECTION_HANDLER_INCLUDE_CONNECTION_HANDLER_DEVICE_H_
 
-#ifdef OS_WIN32
-#include <stdint.h>
-#endif
 #include <string>
 #include <map>
 #include <vector>
-
+#include <stdint.h>
 /**
  * \namespace connection_handler
  * \brief SmartDeviceLink connection_handler namespace.

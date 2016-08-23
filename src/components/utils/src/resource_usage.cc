@@ -2,7 +2,7 @@
 #if defined(__QNXNTO__)
 #include <dirent.h>
 #include <fcntl.h>
-#include "pthread.h"
+#include <pthread.h>
 #include <sys/neutrino.h>
 #include <sys/procfs.h>
 #include <sys/stat.h>
@@ -10,14 +10,18 @@
 #include <sys/types.h>
 #include <unistd.h>
 #endif
-//#include <sys/resource.h>
-//#include <errno.h>
-//#include <sys/types.h>
+#if defined(OS_WIN32) || defined(OS_WINCE)
+#include <process.h>
+#include "windows.h"  
+#include "tlhelp32.h"
+#include "psapi.h"
+#else
+#include <sys/resource.h>
+#include <errno.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <sstream>
-#ifdef OS_WIN32
-#include <process.h>
 #endif
 #include "utils/file_system.h"
 
@@ -25,7 +29,13 @@ namespace utils {
 
 CREATE_LOGGERPTR_GLOBAL(logger_, "Utils")
 
+#if defined(OS_WIN32)
+const char* Resources::proc = "C:\\Windows";
+#elif defined(OS_WINCE)
+const char* Resources::proc = "\\Windows";
+#else
 const char* Resources::proc = "/proc/";
+#endif
 
 ResourseUsage* Resources::getCurrentResourseUsage() {
   PidStats pid_stats;
@@ -46,6 +56,7 @@ ResourseUsage* Resources::getCurrentResourseUsage() {
 }
 
 bool Resources::ReadStatFile(std::string& output) {
+#if !(defined(OS_WIN32) || defined(OS_WINCE))
   std::string filename = GetStatPath();
   if (false == file_system::FileExists(filename)) {
     return false;
@@ -53,11 +64,41 @@ bool Resources::ReadStatFile(std::string& output) {
   if (false == file_system::ReadFile(filename,output)) {
     return false;
   }
+#endif
   return true;
 }
 
 bool Resources::GetProcInfo(Resources::PidStats& output) {
-#if defined(OS_LINUX)
+#if defined(OS_WIN32)||defined(OS_WINCE)
+	DWORD processId=GetProcessId(GetCurrentProcess());
+	PROCESSENTRY32 pe32;
+	pe32.dwSize = sizeof(pe32); 
+	pe32.th32ProcessID=processId;
+	HANDLE hProcessSnap = ::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,processId);  
+	if (hProcessSnap == INVALID_HANDLE_VALUE)  {  
+		printf("CreateToolhelp32Snapshot Failed.\n");  
+		return false;  
+	}  
+	bool isGet=false;
+	
+	BOOL bMore = ::Process32First(hProcessSnap,&pe32);  
+	while (bMore)  {  
+		if(pe32.th32ProcessID==processId) {
+			output.pid=processId;
+			output.ppid=pe32.th32ParentProcessID;
+			output.state=pe32.dwFlags;
+			output.num_threads=pe32.cntThreads;
+			output.priority=pe32.pcPriClassBase;
+			//ProcessIdToSessionId(processId,&output.session);
+			isGet=true;
+			break;
+		}
+		bMore = ::Process32Next(hProcessSnap,&pe32);  
+	}  
+	//不要忘记清除掉snapshot对象  
+	::CloseHandle(hProcessSnap); 
+	return isGet;
+#elif defined(OS_LINUX)
   std::string proc_buf;
   if (false == ReadStatFile(proc_buf)) {
     return false;
@@ -135,13 +176,22 @@ bool Resources::GetProcInfo(Resources::PidStats& output) {
   close(fd);
   return true;
 #else
-	return true;
+  return true;
 #endif
 }
 
 bool Resources::GetMemInfo(Resources::MemInfo &output) {
   bool result = false;
-  #if defined(OS_LINUX)
+#if defined(OS_WIN32) || defined(OS_WINCE)
+  Resources::PidStats pid_stat;
+  if (false == GetProcInfo(pid_stat)) {
+	  LOG4CXX_ERROR(logger_, "Failed to get proc info");
+	  result = false;
+  } else {
+	  output = pid_stat.vsize;
+	  result = true;
+  }
+#elif defined(OS_LINUX)
   Resources::PidStats pid_stat;
   if (false == GetProcInfo(pid_stat)) {
     LOG4CXX_ERROR(logger_, "Failed to get proc info");
@@ -185,6 +235,11 @@ std::string Resources::GetStatPath() {
 #elif defined(__QNXNTO__)
   filename = GetProcPath() + "/as";
 #endif
+
+#if defined(OS_WIN32) || defined(OS_WINCE)
+  filename = GetProcPath() + "/memstat";
+#endif
+
   return filename;
 }
 

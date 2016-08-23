@@ -33,9 +33,9 @@
 
 #include "application_manager/commands/mobile/register_app_interface_response.h"
 #include "interfaces/MOBILE_API.h"
-#include "application_manager/policies/policy_handler.h"
 #include "application_manager/application_manager_impl.h"
 #include "connection_handler/connection_handler.h"
+#include "application_manager/policies/policy_handler_interface.h"
 
 namespace application_manager {
 
@@ -55,35 +55,44 @@ void RegisterAppInterfaceResponse::Run() {
       last_message = false;
     }
   }
- 
+
   SendResponse(success, result_code, last_message);
 
   if (mobile_apis::Result::SUCCESS != result_code) { return; }
 
   // Add registered application to the policy db right after response sent to
   // mobile to be able to check all other API according to app permissions
-  uint32_t connection_key =
-      (*message_)[strings::params][strings::connection_key].asUInt();
-  application_manager::ApplicationSharedPtr app =
+  application_manager::ApplicationSharedPtr application =
       application_manager::ApplicationManagerImpl::instance()->application(
-          connection_key);
-  if (app) {
-    std::string mobile_app_id = app->mobile_app_id();
-    policy::PolicyHandler::instance()->OnAppRegisteredOnMobile(mobile_app_id);
-
-    SetHeartBeatTimeout(connection_key, mobile_app_id);
+          connection_key());
+  if (!application) {
+    LOG4CXX_ERROR(logger_, "Application with connection key "
+                  << connection_key() << " is not registered.");
+    return;
   }
+
+  SetHeartBeatTimeout(connection_key(), application->mobile_app_id());
+
+  // Default HMI level should be set before any permissions validation, since it
+  // relies on HMI level.
+  ApplicationManagerImpl::instance()->OnApplicationRegistered(application);
+
+  // Sends OnPermissionChange notification to mobile right after RAI response
+  // and HMI level set-up
+  application_manager::ApplicationManagerImpl::instance()
+      ->GetPolicyHandler().OnAppRegisteredOnMobile(application->mobile_app_id());
 }
 
 void RegisterAppInterfaceResponse::SetHeartBeatTimeout(
     uint32_t connection_key, const std::string& mobile_app_id) {
   LOG4CXX_AUTO_TRACE(logger_);
-  policy::PolicyHandler *policy_handler = policy::PolicyHandler::instance();
-  if (policy_handler->PolicyEnabled()) {
-    const uint32_t timeout = policy_handler->HeartBeatTimeout(mobile_app_id);
+  const policy::PolicyHandlerInterface& policy_handler =
+      application_manager::ApplicationManagerImpl::instance()->GetPolicyHandler();
+  if (policy_handler.PolicyEnabled()) {
+    const uint32_t timeout = policy_handler.HeartBeatTimeout(mobile_app_id);
     if (timeout > 0) {
       application_manager::ApplicationManagerImpl::instance()->
-          connection_handler()->SetHeartBeatTimeout(connection_key, timeout);
+          connection_handler().SetHeartBeatTimeout(connection_key, timeout);
     }
   } else {
     LOG4CXX_INFO(logger_, "Policy is turn off");

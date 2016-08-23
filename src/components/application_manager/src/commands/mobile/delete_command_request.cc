@@ -38,6 +38,11 @@
 #include "interfaces/HMI_API.h"
 #include "utils/helpers.h"
 
+#ifdef OS_WIN32
+#undef max
+#undef min
+#endif
+
 namespace application_manager {
 
 namespace commands {
@@ -209,11 +214,7 @@ void DeleteCommandRequest::on_event(const event_engine::Event& event) {
     result_code = mobile_apis::Result::WARNINGS;
   } else {
     result_code = MessageHelper::HMIToMobileResult(
-#ifdef OS_WIN32
-               max(ui_result_, vr_result_));
-#else
           std::max(ui_result_, vr_result_));
-#endif
   }
 
   SendResponse(result, result_code, NULL, &msg_params);

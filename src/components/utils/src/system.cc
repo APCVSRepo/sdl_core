@@ -29,18 +29,15 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifdef MODIFY_FUNCTION_SIGN
-#include <global_first.h>
-#endif
-#include "utils/system.h"
-
 #ifdef __QNX__
 #  include <process.h>
 #else  // __QNX__
 #ifndef OS_WINCE
 #  include <sys/types.h>
 #endif
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
+#include "windows.h"
+#include "process.h"
 #else
 #  include <sys/wait.h>
 #endif
@@ -58,6 +55,10 @@
 
 #include "utils/logger.h"
 #include "utils/system.h"
+
+#ifdef OS_WINCE
+#include "utils/global.h"
+#endif
 
 namespace utils {
 
@@ -79,10 +80,6 @@ System::System(const std::string& file, const std::string& command)
   argv_.push_back(command);
 }
 
-bool System::Execute() {
-  return Execute(false);
-}
-
 System& System::Add(const std::string& arg) {
   argv_.push_back(arg);
   return *this;
@@ -94,6 +91,10 @@ std::string System::command() const {
 
 std::vector<std::string> System::argv() const {
   return argv_;
+}
+
+bool System::Execute() {
+  return Execute(false);
 }
 
 #ifdef __QNX__
@@ -122,10 +123,59 @@ bool System::Execute(bool wait) {
 }
 
 #else  // __QNX__
-#ifdef OS_WIN32
+#if defined(OS_WIN32)
 bool System::Execute(bool wait) {
-	wait;
-	return true;
+  bool bRet = true;
+  PROCESS_INFORMATION pi;
+  STARTUPINFO si = { sizeof(si) };
+
+  bRet = CreateProcess(
+      NULL,
+      (LPSTR)command_.c_str(),
+      NULL,
+      NULL,
+      FALSE,   
+      0,
+      NULL,
+      NULL,
+      &si,
+      &pi                 
+      ) ? true : false;
+
+  if (bRet && wait) {
+      WaitForSingleObject(pi.hProcess, INFINITE);
+  }
+
+  return bRet;
+}
+#elif defined(OS_WINCE)
+bool System::Execute(bool wait) {
+  PROCESS_INFORMATION pi;
+  STARTUPINFO si = { sizeof(si) };
+  std::string absCmd = command_;
+  if (wait&&absCmd.empty()) {
+	  return false;
+  }
+  if (absCmd[0] != '\\' && absCmd[0] != '/') {
+    absCmd = Global::RelativePathToAbsPath(absCmd);
+  }
+
+  SHELLEXECUTEINFO ShExecInfo = {0};
+  ShExecInfo.cbSize = sizeof(SHELLEXECUTEINFO);
+  ShExecInfo.fMask = SEE_MASK_NOCLOSEPROCESS;
+  ShExecInfo.hwnd = NULL;
+  ShExecInfo.lpVerb = NULL;
+  ShExecInfo.lpFile = Global::StringToWString(absCmd).c_str();
+  ShExecInfo.lpParameters = L"";
+  ShExecInfo.lpDirectory = NULL;
+  ShExecInfo.nShow = SW_HIDE;
+  ShExecInfo.hInstApp = NULL;
+
+  BOOL bRet = ShellExecuteEx(&ShExecInfo); 
+  if (bRet && wait) {
+    WaitForSingleObject(ShExecInfo.hProcess,INFINITE);
+  }
+  return bRet == TRUE;
 }
 #elif defined(OS_MAC)
 bool System::Execute(bool wait) {

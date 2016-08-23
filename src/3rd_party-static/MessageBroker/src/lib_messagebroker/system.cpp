@@ -23,8 +23,9 @@
  */
 
 #include <time.h>
+#ifndef OS_WINCE
 #include <signal.h>
-
+#endif
 #include "system.h"
 
 namespace System {
@@ -83,9 +84,7 @@ bool Thread::Start(bool detach) {
 }
 
 bool Thread::Stop() {
-#ifndef  OS_ANDROID
   pthread_cancel(m_id);
-#endif
   return false;// Android does not support 'pthread_cancel';
 }
 
@@ -94,7 +93,7 @@ bool Thread::Join(void** ret) {
 }
 
 void* Thread::Call(void* arg) {
-#ifndef OS_WIN32
+#if !defined(OS_WIN32) && !defined(OS_WINCE)
   // Disable system signals receiving in thread
   // by setting empty signal mask
   // (system signals processes only in the main thread)
@@ -212,11 +211,7 @@ bool Thread::Start(bool detach) {
 }
 
 bool Thread::Stop() {
-#ifdef OS_WIN32
-  return TerminateThread(m_id, (DWORD)-1) == TRUE;
-#else
   return TerminateThread(m_id, (DWORD) - 1);
-#endif
 }
 
 bool Thread::Join(void** ret) {
@@ -225,7 +220,9 @@ bool Thread::Join(void** ret) {
   GetExitCodeThread(m_id, &val);
   CloseHandle(m_id);
   m_id = NULL;
-  *ret = (void*)val;
+  if (ret) {
+    *ret = (void*)val;
+  }
   return true;
 }
 
@@ -266,12 +263,7 @@ bool Mutex::Unlock() {
     return false;
   }
 
-#ifdef OS_WIN32
-  return ReleaseMutex(m_mutex) == TRUE;
-#else
   return ReleaseMutex(m_mutex);
-#endif
-
 }
 
 #endif

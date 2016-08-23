@@ -291,7 +291,7 @@ class CMessageBroker_Private {
      * \brief Binary semaphore that is used to notify the
      * messaging thread that a new message is available.
      */
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	HANDLE m_messageQueueSemaphore;
 #else
 	System::BinarySemaphore m_messageQueueSemaphore;
@@ -302,12 +302,10 @@ CMessageBroker_Private::CMessageBroker_Private() :
   mControllersIdCounter(1),
   mpSender(NULL) {
   mpRegistry = CMessageBrokerRegistry::getInstance();
-#ifdef OS_WIN32
 #ifdef OS_WINCE
   m_messageQueueSemaphore = ::CreateEvent(0, false, false, L"messagebroker-private");
-#else
+#elif OS_WIN32
   m_messageQueueSemaphore = ::CreateEvent(0, false, false, "messagebroker-private");
-#endif
 #endif
 }
 
@@ -571,7 +569,7 @@ void CMessageBroker_Private::pushMessage(CMessage* pMessage) {
   }
   mMessagesQueueMutex.Unlock();
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
   ::SetEvent(m_messageQueueSemaphore);
 #else
   m_messageQueueSemaphore.Notify();
@@ -910,7 +908,7 @@ void* CMessageBroker::MethodForThread(void* arg) {
       }
     }
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 	::WaitForSingleObject(p->m_messageQueueSemaphore, INFINITE);
 #else
 	p->m_messageQueueSemaphore.Wait();
@@ -919,14 +917,6 @@ void* CMessageBroker::MethodForThread(void* arg) {
 
   return NULL;
 }
-
-#ifdef MODIFY_FUNCTION_SIGN
-void CMessageBroker::clearController()
-{
-	p->mpRegistry->clearController();
-	p->mpRegistry->clearSubscriber();
-}
-#endif
 
 bool CMessageBroker_Private::checkMessage(CMessage* pMessage, Json::Value& error) {
   DBG_MSG(("CMessageBroker::checkMessage()\n"));

@@ -29,7 +29,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#if defined(OS_WIN32) || defined(OS_WINCE)
+#include <Windows.h>
+#else
 #include <dlfcn.h>
+#endif
 
 #include "gtest/gtest.h"
 
@@ -46,6 +50,39 @@ namespace policy {
 }
 
 TEST(SharedLibraryTest, FullTest_OpenLibrarySetSymbolCloseLibrary_ExpectActsWithoutErrors) {
+#if defined(OS_WIN32)
+    //Arrange
+    const std::string kLib = "..\\src\\policy\\Policy.dll";
+    HINSTANCE handle = LoadLibrary(kLib.c_str());
+
+    //Assert
+    EXPECT_FALSE(IsError((void*)GetLastError()));
+    ASSERT_TRUE(handle);
+
+    //Act
+    const std::string kSymbol = "CreateManager";
+    void* symbol = GetProcAddress(handle, kSymbol.c_str());
+
+    //Assert
+    EXPECT_FALSE(IsError((void*)GetLastError()));
+    EXPECT_TRUE(symbol);
+#elif defined(OS_WINCE)
+    //Arrange
+    const std::wstring kLib = L"..\\src\\policy\\Policy.dll";
+    HINSTANCE handle = LoadLibrary(kLib.c_str());
+
+    //Assert
+    EXPECT_FALSE(IsError((void*)GetLastError()));
+    ASSERT_TRUE(handle);
+
+    //Act
+    const std::wstring kSymbol = L"CreateManager";
+    void* symbol = GetProcAddress(handle, kSymbol.c_str());
+
+    //Assert
+    EXPECT_FALSE(IsError((void*)GetLastError()));
+    EXPECT_TRUE(symbol);
+#else
   //Arrange
   const std::string kLib = "../src/policy/libPolicy.so";
   void* handle = dlopen(kLib.c_str(), RTLD_LAZY);
@@ -68,6 +105,7 @@ TEST(SharedLibraryTest, FullTest_OpenLibrarySetSymbolCloseLibrary_ExpectActsWith
   //Assert
   EXPECT_FALSE(ret);
   EXPECT_FALSE(IsError(dlerror()));
+#endif
 }
 
 }  // namespace policy

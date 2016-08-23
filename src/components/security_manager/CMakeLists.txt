@@ -37,10 +37,23 @@ include_directories(
   ${COMPONENTS_DIR}/utils/include/
   ${COMPONENTS_DIR}/application_manager/include/
   ${JSONCPP_INCLUDE_DIRECTORY}
-  ${CMAKE_SOURCE_DIR}/src/thirdPartyLibs/jsoncpp/include
+  ${COMPONENTS_DIR}/resumption/include
+  ${CMAKE_SOURCE_DIR}/src/3rd_party-static/jsoncpp/include
   ${APR_INCLUDE_DIRECTORY}
-  ${CMAKE_SOURCE_DIR}/src/3rd_party/pthread-win32-2.9.1
 )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+include_directories(
+    ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+    ${COMPONENTS_DIR}/utils/include
+  )
+endif()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+include_directories(
+  ${CMAKE_SOURCE_DIR}/src/3rd_party-static/sdk_ext/include
+)
+endif()
 
 set (SOURCES
   ${COMPONENTS_DIR}/security_manager/src/security_manager_impl.cc
@@ -50,8 +63,11 @@ set (SOURCES
 )
 
 add_library(SecurityManager ${SOURCES})
-target_link_libraries(SecurityManager crypto ssl ProtocolHandler jsoncpp ProtocolLibrary)
-
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" OR CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+  target_link_libraries(SecurityManager ssleay32 libeay32 ProtocolHandler jsoncpp ProtocolLibrary)
+else()
+  target_link_libraries(SecurityManager crypto ssl ProtocolHandler jsoncpp ProtocolLibrary)
+endif()
 if(BUILD_TESTS)
   add_subdirectory(test)
 endif()

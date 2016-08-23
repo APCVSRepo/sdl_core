@@ -39,6 +39,11 @@
 #include "interfaces/MOBILE_API.h"
 #include "interfaces/HMI_API.h"
 
+#ifdef OS_WIN32
+#undef max
+#undef min
+#endif
+
 namespace application_manager {
 
 namespace commands {
@@ -281,27 +286,18 @@ void ResetGlobalPropertiesRequest::on_event(const event_engine::Event& event) {
         return_info = std::string("Unsupported phoneme type sent in a prompt").c_str();
       } else {
         result_code = static_cast<mobile_apis::Result::eType>(
-#ifdef OS_WIN32
-			                 max(ui_result_, tts_result_));
-#else
                         std::max(ui_result_, tts_result_));
-#endif
       }
     } else {
-#ifdef OS_WIN32
       result_code = static_cast<mobile_apis::Result::eType>(
-                      max(ui_result_, tts_result_));
-#else
-		result_code = static_cast<mobile_apis::Result::eType>(
-			std::max(ui_result_, tts_result_));
-#endif
+                      std::max(ui_result_, tts_result_));
     }
 
     SendResponse(result, static_cast<mobile_apis::Result::eType>(result_code),
                  return_info, &(message[strings::msg_params]));
 
     if (!application) {
-      LOG4CXX_DEBUG(logger_, "NULL pointer");
+      LOG4CXX_ERROR(logger_, "NULL pointer");
       return;
     }
 

@@ -33,13 +33,25 @@
 #include "gtest/gtest.h"
 #include "generated_code_with_sqlite_test.h"
 
+#ifdef OS_WINCE
+#include "utils/file_system.h"
+#endif
+
 namespace rpc {
 
 class GeneratedCodeTest : public ::testing::Test {
  public:
   static void SetUpTestCase() {
     sqlite3* conn;
+#ifdef OS_WINCE
+    std::string tmp = kDatabaseName + ".sqlite";
+    if (tmp[0] != '\\' && tmp[0] != '/') {
+      tmp = Global::RelativePathToAbsPath(tmp);
+    }
+    sqlite3_open(tmp.c_str(), &conn);
+#else
     sqlite3_open((kDatabaseName + ".sqlite").c_str(), &conn);
+#endif
     sqlite3_exec(conn, kEndpointsCreation.c_str(), NULL, NULL, NULL);
     sqlite3_exec(conn, kEndpointsContent.c_str(), NULL, NULL, NULL);
     sqlite3_exec(conn, kAppPoliciesCreation.c_str(), NULL, NULL, NULL);
@@ -48,7 +60,11 @@ class GeneratedCodeTest : public ::testing::Test {
   }
 
   static void TearDownTestCase() {
+#ifdef OS_WINCE
+    file_system::DeleteFileWindows((kDatabaseName + ".sqlite").c_str());
+#else
     remove((kDatabaseName + ".sqlite").c_str());
+#endif
   }
 
   static const std::string kDatabaseName;
@@ -70,7 +86,7 @@ const std::string GeneratedCodeTest::kEndpointsCreation =
 
 const std::string GeneratedCodeTest::kEndpointsContent =
     "INSERT INTO Endpoints "
-        "VALUES (1, '0x07', null, 'http://test.example.com', 1)";
+        "VALUES (1, '0x07', null, 'http://url.example.com', 1)";
 
 const std::string GeneratedCodeTest::kAppPoliciesCreation =
     "CREATE TABLE AppPolicies ("
@@ -101,7 +117,7 @@ TEST_F(GeneratedCodeTest, FindSectionEndpoints_OpenDBSetDefaultUrl_ExpectDefault
   std::string url = ep["0x07"]["default"].front();
 
   //assert
-  EXPECT_EQ("http://test.example.com", url);
+  EXPECT_EQ("http://url.example.com", url);
 }
 
 TEST_F(GeneratedCodeTest, RemoveSectionEndpoints_RemoveSectionEndpoints_Expect0EndPoints) {

@@ -30,42 +30,67 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef MODIFY_FUNCTION_SIGN
-#include <global_first.h>
-#endif
-#ifdef OS_WIN32
+#include "utils/date_time.h"
+
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #include <time.h>
 #include <assert.h>
+#include "os/poll_windows.h"
 #elif defined(OS_MAC)
 #else
 #include <sys/time.h>
 #endif
 #include <stdint.h>
-#include "utils/date_time.h"
-#ifdef OS_WIN32
-#include "os/poll_windows.h"
+
+#if defined(OS_WINCE)
+#include "time_ext.h"
 #endif
-#ifdef OS_WINCE
-#include "utils/global.h"
+
+#if defined(OS_WIN32)||defined(OS_WINCE)
+static uint64_t win32_system_time_ = time(NULL);  //wince start time ,unit :s
 #endif
-#ifdef OS_WIN32
+
+#if defined(OS_WINCE)
+static time_t time(time_t* TimeOutPtr)  
+{
+	SYSTEMTIME SytemTime;
+	FILETIME FileTime;
+	time_t Time = 0;
+
+	GetSystemTime( &SytemTime );
+	if( SystemTimeToFileTime( &SytemTime, &FileTime ) )
+	{
+		memcpy( &Time, &FileTime, sizeof( FILETIME ) );
+		// subtract the FILETIME value for 1970-01-01 00:00 (UTC)
+		Time -= 116444736000000000;
+		// convert to seconds
+		Time /= 10000000;
+	}
+	if( TimeOutPtr )
+	{
+		*TimeOutPtr = Time;
+	}
+	return Time;
+}
+#endif
+
+#if defined(OS_WIN32) || defined(OS_WINCE)
 void clock_gettime(int i, timespec * tm)
 {
-	if (i == CLOCK_MONOTONIC)
-	{
-		unsigned _int64 cur = GetTickCount();
+	if (i == CLOCK_MONOTONIC) {
+		unsigned __int64 cur = GetTickCount();
 		tm->tv_sec = cur / 1000;
-		tm->tv_nsec = (cur % 1000) * 1000;
+		tm->tv_nsec = (cur % 1000) * 1000000;
 	}
-	else if (i == CLOCK_REALTIME)
-	{
+	else if (i == CLOCK_REALTIME) {
 		time_t t;
 		::time(&t);
 		tm->tv_sec = t;
 		tm->tv_nsec = 0;
 	}
-	else
-		assert(false);
+    else {
+        assert(false);
+    }
 }
 #elif defined(OS_MAC)
 void clock_gettime(int i, timespec * tm)
@@ -82,30 +107,32 @@ void clock_gettime(int i, timespec * tm)
 
 namespace date_time {
 
-#ifdef OS_WIN32
-#else
-int32_t const DateTime::MILLISECONDS_IN_SECOND;
-int32_t const DateTime::MICROSECONDS_IN_MILLISECONDS;
-#endif
+#if defined(OS_WIN32)|| defined(OS_WINCE)
 
 TimevalStruct DateTime::getCurrentTime() {
-  TimevalStruct currentTime;
-#ifdef OS_WIN32
-  timespec tm;
-  clock_gettime(CLOCK_REALTIME, &tm);
-  currentTime.tv_sec = (long)tm.tv_sec;
-  currentTime.tv_usec = tm.tv_nsec;
+  TimevalStruct tv;
+  const uint32_t kMillisecondsInSecond = 1000u;
+  uint64_t curr=clock();
+  // Finally change microseconds to seconds and place in the seconds value.
+  // The modulus picks up the microseconds.
+  tv.tv_sec = static_cast<long>(win32_system_time_+curr/kMillisecondsInSecond);
+  tv.tv_usec = static_cast<long>((curr % kMillisecondsInSecond)*1000);
+  return tv;
+}
 #else
+TimevalStruct DateTime::getCurrentTime() {
+  TimevalStruct currentTime;
+
 #ifdef OS_MAC
     struct timezone timeZone;
 #else
   timezone timeZone;
 #endif
   gettimeofday(&currentTime, &timeZone);
-#endif
 
-    return currentTime;
-  }
+  return currentTime;
+}
+#endif
 
 int64_t date_time::DateTime::getSecs(const TimevalStruct &time) {
    const TimevalStruct times = ConvertionUsecs(time);
@@ -115,13 +142,13 @@ int64_t date_time::DateTime::getSecs(const TimevalStruct &time) {
 int64_t DateTime::getmSecs(const TimevalStruct &time) {
   const TimevalStruct times = ConvertionUsecs(time);
   return static_cast<int64_t>(times.tv_sec) * MILLISECONDS_IN_SECOND
-      + times.tv_usec / MICROSECONDS_IN_MILLISECONDS;
+      + times.tv_usec / MICROSECONDS_IN_MILLISECOND;
 }
 
 int64_t DateTime::getuSecs(const TimevalStruct &time) {
   const TimevalStruct times = ConvertionUsecs(time);
   return static_cast<int64_t>(times.tv_sec) * MILLISECONDS_IN_SECOND
-      * MICROSECONDS_IN_MILLISECONDS + times.tv_usec;
+      * MICROSECONDS_IN_MILLISECOND + times.tv_usec;
 }
 
 int64_t DateTime::calculateTimeSpan(const TimevalStruct& sinceTime) {
@@ -129,7 +156,7 @@ int64_t DateTime::calculateTimeSpan(const TimevalStruct& sinceTime) {
 }
 
 int64_t DateTime::calculateTimeDiff(const TimevalStruct &time1,
-                                    const TimevalStruct &time2){
+                                    const TimevalStruct &time2) {
   const TimevalStruct times1 = ConvertionUsecs(time1);
   const TimevalStruct times2 = ConvertionUsecs(time2);
   TimevalStruct ret;
@@ -144,7 +171,7 @@ int64_t DateTime::calculateTimeDiff(const TimevalStruct &time1,
 void DateTime::AddMilliseconds(TimevalStruct& time,
                              uint32_t milliseconds) {
   const uint32_t sec = milliseconds/MILLISECONDS_IN_SECOND;
-  const uint32_t usec = (milliseconds%MILLISECONDS_IN_SECOND)*MICROSECONDS_IN_MILLISECONDS;
+  const uint32_t usec = (milliseconds%MILLISECONDS_IN_SECOND)*MICROSECONDS_IN_MILLISECOND;
   time.tv_sec += sec;
   time.tv_usec += usec;
   time = ConvertionUsecs(time);
@@ -183,7 +210,7 @@ TimeCompare date_time::DateTime::compareTime(const TimevalStruct &time1, const T
   return EQUAL;
 }
 
-TimevalStruct date_time::DateTime::ConvertionUsecs(const TimevalStruct &time){
+TimevalStruct date_time::DateTime::ConvertionUsecs(const TimevalStruct &time) {
   if (time.tv_usec >= MICROSECONDS_IN_SECOND) {
     TimevalStruct time1;
     time1.tv_sec = static_cast<int64_t>(time.tv_sec) + (time.tv_usec/MICROSECONDS_IN_SECOND);

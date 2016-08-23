@@ -1,6 +1,5 @@
 /*
-
- Copyright (c) 2013, Ford Motor Company
+ Copyright (c) 2016, Ford Motor Company
  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
@@ -31,12 +30,18 @@
  POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <string.h>
+#include <cstring>
+#include <string>
 #include "application_manager/commands/mobile/alert_maneuver_request.h"
 #include "application_manager/application_manager_impl.h"
 #include "application_manager/application_impl.h"
 #include "application_manager/message_helper.h"
 #include "utils/helpers.h"
+
+#ifdef OS_WIN32
+#undef max
+#undef min
+#endif
 
 namespace application_manager {
 
@@ -82,7 +87,8 @@ void AlertManeuverRequest::Run() {
   //ProcessSoftButtons checks strings on the contents incorrect character
 
   mobile_apis::Result::eType processing_result =
-      MessageHelper::ProcessSoftButtons((*message_)[strings::msg_params], app);
+      MessageHelper::ProcessSoftButtons((*message_)[strings::msg_params], app,
+          application_manager::ApplicationManagerImpl::instance()->GetPolicyHandler());
 
   if (mobile_apis::Result::SUCCESS != processing_result) {
     LOG4CXX_ERROR(logger_, "Wrong soft buttons parameters!");
@@ -205,17 +211,13 @@ void AlertManeuverRequest::on_event(const event_engine::Event& event) {
       (is_tts_ok && is_no_navi_error) ||
       (hmi_apis::Common_Result::SUCCESS == tts_result &&
        hmi_apis::Common_Result::UNSUPPORTED_RESOURCE == navi_result );
-#ifdef OS_WIN32
-  mobile_apis::Result::eType result_code =
-      static_cast<mobile_apis::Result::eType>(
-	         max(tts_speak_result_code_, navi_alert_maneuver_result_code_));
-#else
+
   mobile_apis::Result::eType result_code =
       static_cast<mobile_apis::Result::eType>(
         std::max(tts_speak_result_code_, navi_alert_maneuver_result_code_));
-#endif
 
-  const char* return_info = NULL;
+  std::string return_info =
+      message[strings::msg_params][hmi_response::message].asString();
 
   const bool is_tts_or_navi_warning =
       Compare<hmi_apis::Common_Result::eType, EQ, ONE>(
@@ -228,10 +230,10 @@ void AlertManeuverRequest::on_event(const event_engine::Event& event) {
        hmi_apis::Common_Result::UNSUPPORTED_RESOURCE == tts_result)) {
     result_code = mobile_apis::Result::WARNINGS;
     return_info =
-        std::string("Unsupported phoneme type sent in a prompt").c_str();
+        std::string("Unsupported phoneme type sent in a prompt");
   }
 
-  SendResponse(result, result_code, return_info,
+  SendResponse(result, result_code, return_info.c_str(),
                &(message[strings::msg_params]));
 }
 

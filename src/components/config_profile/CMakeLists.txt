@@ -36,9 +36,16 @@ include_directories (
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	include_directories (
-		${CMAKE_SOURCE_DIR}/include/win32
-	)
+  include_directories(
+    ${CMAKE_SOURCE_DIR}/include/win32
+    ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+  )
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+  include_directories(
+    ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+  )
 endif()
 
 set (SOURCES
@@ -48,3 +55,7 @@ set (SOURCES
 
 add_library("ConfigProfile" ${SOURCES})
 target_link_libraries("ConfigProfile" Utils)
+
+if(BUILD_TESTS)
+  add_subdirectory(test)
+endif()

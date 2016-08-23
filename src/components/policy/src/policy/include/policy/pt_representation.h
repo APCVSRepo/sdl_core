@@ -36,35 +36,12 @@
 #include <vector>
 #include <string>
 #include "policy/policy_types.h"
-#include "./types.h"
+#include "types.h"
+#include "policy/policy_settings.h"
 
 namespace policy_table = rpc::policy_table_interface_base;
 
 namespace policy {
-
-/**
- * @struct Data about vehicle
- */
-struct VehicleData {
-#ifdef OS_WIN32
-	VehicleData(){
-		vehicle_make = "";
-		vehicle_model = "";
-		vehicle_year = 0;
-	}
-	VehicleData(const std::string &vehicle_make_data, const std::string &vehicle_model_data, int vehicle_year_data){
-		vehicle_make = vehicle_make_data;
-		vehicle_model = vehicle_model_data;
-		vehicle_year = vehicle_year_data;
-	}
-	std::string vehicle_make;
-	std::string vehicle_model;
-#else
-  const std::string vehicle_make;
-  const std::string vehicle_model;
-#endif
-  int vehicle_year;
-};
 
 enum InitResult {
   NONE = 0,
@@ -153,7 +130,7 @@ class PTRepresentation {
     /**
      * @brief Get information about vehicle
      */
-    virtual VehicleData GetVehicleData() = 0;
+    virtual const VehicleInfo GetVehicleInfo() const = 0;
 
     /**
      * @brief Allows to update 'vin' field in module_meta table.
@@ -210,7 +187,7 @@ class PTRepresentation {
      * @brief Initialized Policy Table (load)
      * @return bool Success of operation
      */
-    virtual InitResult Init() = 0;
+    virtual InitResult Init(const PolicySettings* settings) = 0;
 
     /**
      * @brief Close policy table
@@ -337,6 +314,13 @@ class PTRepresentation {
      * @return true if success, otherwise - false
      */
     virtual bool UpdateDBVersion() const = 0;
+
+   protected:
+    const PolicySettings& get_settings() const {
+        DCHECK(settings_);
+        return *settings_;
+    }
+    const PolicySettings* settings_;
 };
 
 }  //  namespace policy

@@ -55,13 +55,23 @@ using protocol_handler::Extract;
 
 namespace {
   typedef std::map<MessageType, std::string> MessageTypeMap;
+#ifdef OS_WINCE
+  const MessageTypeMap::value_type rawData[] = {
+	  std::make_pair(kRequest, "Request"),
+	  std::make_pair(kResponse, "Response"),
+	  std::make_pair(kNotification, "Notification")
+  };
+  const int numElems = sizeof(rawData) / sizeof(rawData[0]);
+  MessageTypeMap messageTypes(rawData, rawData + numElems);
+#else
   MessageTypeMap messageTypes = {
     std::make_pair(kRequest, "Request"),
     std::make_pair(kResponse, "Response"),
     std::make_pair(kNotification, "Notification")
   };
+#endif
 }
-CREATE_LOGGERPTR_GLOBAL(logger_, "MobileMessageHandler")
+CREATE_LOGGERPTR_GLOBAL(logger_, "ApplicationManager")
 
 application_manager::Message* MobileMessageHandler::HandleIncomingMessageProtocol(
   const protocol_handler::RawMessagePtr message) {
@@ -116,8 +126,8 @@ protocol_handler::RawMessage* MobileMessageHandler::HandleOutgoingMessageProtoco
     return MobileMessageHandler::HandleOutgoingMessageProtocolV1(message);
   }
   if ((message->protocol_version() == application_manager::kV2) ||
-	  (message->protocol_version() == application_manager::kV3) ||
-	  (message->protocol_version() == application_manager::kV4)) {
+      (message->protocol_version() == application_manager::kV3) ||
+      (message->protocol_version() == application_manager::kV4)) {
     return MobileMessageHandler::HandleOutgoingMessageProtocolV2(message);
   }
   return NULL;
@@ -198,11 +208,10 @@ MobileMessageHandler::HandleIncomingMessageProtocolV2(
 protocol_handler::RawMessage*
 MobileMessageHandler::HandleOutgoingMessageProtocolV1(
   const MobileMessage& message) {
-  LOG4CXX_INFO(logger_,
-               "MobileMessageHandler HandleOutgoingMessageProtocolV1()");
+  LOG4CXX_AUTO_TRACE(logger_);
   std::string messageString = message->json_message();
   if (messageString.length() == 0) {
-    LOG4CXX_INFO(logger_,
+    LOG4CXX_WARN(logger_,
                  "Drop ill-formed message from mobile");
     return NULL;
   }
@@ -221,8 +230,7 @@ MobileMessageHandler::HandleOutgoingMessageProtocolV1(
 protocol_handler::RawMessage*
 MobileMessageHandler::HandleOutgoingMessageProtocolV2(
   const MobileMessage& message) {
-  LOG4CXX_INFO(logger_,
-               "MobileMessageHandler HandleOutgoingMessageProtocolV2()");
+  LOG4CXX_AUTO_TRACE(logger_);
   if (message->json_message().length() == 0) {
     LOG4CXX_ERROR(logger_, "json string is empty.");
   }

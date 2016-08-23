@@ -31,7 +31,7 @@
 #ifndef SRC_COMPONENTS_SMART_OBJECTS_INCLUDE_SMART_OBJECTS_ERRORS_H_
 #define SRC_COMPONENTS_SMART_OBJECTS_INCLUDE_SMART_OBJECTS_ERRORS_H_
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #ifdef ERROR
 #undef ERROR
 #endif // ERROR
@@ -87,18 +87,6 @@ enum eType {
    * @brief Mandatory parameter is missing.
    **/
   MISSING_MANDATORY_PARAMETER,
-
-#ifdef MODIFY_FUNCTION_SIGN
-  /**
-    * @brief Mandatory untitled (with any name) parameter is missing.
-    **/
-  MISSING_MANDATORY_UNTITLED_PARAMETER,
-
-  /**
-    * @brief Unexpected parameter.
-    **/
-  UNEXPECTED_PARAMETER,
-#endif
 
   /**
    * @brief General validation error

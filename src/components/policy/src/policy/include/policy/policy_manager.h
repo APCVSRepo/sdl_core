@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2013, Ford Motor Company
+ Copyright (c) 2016, Ford Motor Company
  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
@@ -34,12 +34,17 @@
 #define SRC_COMPONENTS_POLICY_INCLUDE_POLICY_POLICY_MANAGER_H_
 
 #include <vector>
+#ifndef OS_WINCE
+#include <cstdint>
+#endif
 
 #include "policy/policy_types.h"
 #include "policy/policy_listener.h"
-#include "usage_statistics/statistics_manager.h"
+#include "policy/usage_statistics/statistics_manager.h"
 
 namespace policy {
+class PolicySettings;
+
 class PolicyManager : public usage_statistics::StatisticsManager {
   public:
     virtual ~PolicyManager() {
@@ -52,7 +57,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      * @param file_name Path to preloaded PT file
      * @return true if successfully
      */
-    virtual bool InitPT(const std::string& file_name) = 0;
+    virtual bool InitPT(const std::string& file_name, const PolicySettings* settings) = 0;
 
     /**
      * @brief Updates Policy Table from binary message received from
@@ -89,7 +94,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
     /**
      * @brief PTU is needed, for this PTS has to be formed and sent.
      */
-    virtual void RequestPTUpdate() = 0;
+    virtual bool RequestPTUpdate() = 0;
 
     /**
      * @brief Check if specified RPC for specified application
@@ -143,10 +148,10 @@ class PolicyManager : public usage_statistics::StatisticsManager {
 
     /**
      * Gets timeout to wait before next retry updating PT
-     * If timeout is less or equal to zero then the retry sequence is not need.
+     * If timeout is equal to zero then the retry sequence is not need.
      * @return timeout in seconds
      */
-    virtual int NextRetryTimeout() = 0;
+    virtual uint32_t NextRetryTimeout() = 0;
 
     /**
      * Gets timeout to wait until receive response
@@ -177,7 +182,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      * @return status of device consent
      */
     virtual DeviceConsent GetUserConsentForDevice(
-      const std::string& device_id) = 0;
+      const std::string& device_id) const = 0;
 
     /**
      * @brief Get user consent for application
@@ -204,10 +209,9 @@ class PolicyManager : public usage_statistics::StatisticsManager {
     virtual bool ReactOnUserDevConsentForApp(const std::string app_id,
         bool is_device_allowed) = 0;
     /**
-     * Sets number of kilometers and days after epoch, that passed for
-     * receiving PT UPdate.
+     * Sets counter value that passed for receiving PT UPdate.
      */
-    virtual void PTUpdatedAt(int kilometers, int days_after_epoch) = 0;
+    virtual void PTUpdatedAt(Counters counter, int value) = 0;
 
     /**
      * @brief Retrieves data from app_policies about app on its registration:
@@ -253,7 +257,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      * @return true, if succedeed, otherwise - false
      */
     virtual bool GetDefaultHmi(const std::string& policy_app_id,
-                               std::string* default_hmi) = 0;
+                               std::string* default_hmi) const = 0;
 
     /**
      * @brief Get priority for application
@@ -262,7 +266,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      * @return true, if succedeed, otherwise - false
      */
     virtual bool GetPriority(const std::string& policy_app_id,
-                             std::string* priority) = 0;
+                             std::string* priority) const = 0;
 
     /**
      * @brief Get user friendly messages for given RPC messages and language
@@ -307,7 +311,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      * @brief Return device id, which hosts specific application
      * @param Application id, which is required to update device id
      */
-    virtual std::string& GetCurrentDeviceId(const std::string& policy_app_id) = 0;
+    virtual std::string& GetCurrentDeviceId(const std::string& policy_app_id) const = 0;
 
     /**
      * @brief Set current system language
@@ -355,12 +359,12 @@ class PolicyManager : public usage_statistics::StatisticsManager {
     /**
      * @brief Check if app can keep context.
      */
-    virtual bool CanAppKeepContext(const std::string& app_id) = 0;
+    virtual bool CanAppKeepContext(const std::string& app_id) const = 0;
 
     /**
      * @brief Check if app can steal focus.
      */
-    virtual bool CanAppStealFocus(const std::string& app_id) = 0;
+    virtual bool CanAppStealFocus(const std::string& app_id) const = 0;
 
     /**
      * @brief Runs necessary operations, which is depends on external system
@@ -374,7 +378,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      * @param priority
      * @return
      */
-    virtual uint32_t GetNotificationsNumber(const std::string& priority) = 0;
+    virtual uint32_t GetNotificationsNumber(const std::string& priority) const = 0 ;
 
     /**
      * @brief Allows to update Vehicle Identification Number in policy table.
@@ -418,6 +422,11 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      */
     virtual const std::vector<std::string> GetAppRequestTypes(
       const std::string policy_app_id) const = 0;
+   
+    /**
+     * @brief Get information about vehicle
+     */
+    virtual const VehicleInfo GetVehicleInfo() const = 0;
 
     /**
      * @brief OnAppRegisteredOnMobile alows to handle event when application were
@@ -435,6 +444,8 @@ class PolicyManager : public usage_statistics::StatisticsManager {
      * @return The certificate in PKCS#7 format.
      */
     virtual std::string RetrieveCertificate() const = 0;
+
+    virtual const PolicySettings& get_settings() const = 0;
 
   protected:
     /**
@@ -459,7 +470,7 @@ class PolicyManager : public usage_statistics::StatisticsManager {
 
 }  // namespace policy
 
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 extern "C" __declspec(dllexport) policy::PolicyManager* CreateManager();
 #else
 extern "C" policy::PolicyManager* CreateManager();

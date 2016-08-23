@@ -33,6 +33,10 @@
 #include "sqlite_wrapper/sql_error.h"
 #include "sqlite_wrapper/sql_database.h"
 
+#ifdef OS_WINCE
+#include "utils/file_system.h"
+#endif
+
 using ::utils::dbms::SQLError;
 using ::utils::dbms::SQLDatabase;
 
@@ -40,6 +44,43 @@ namespace test {
 namespace components {
 namespace utils {
 namespace dbms {
+
+#ifdef OS_WINCE
+bool chmod(const std::string& fileName, int iFlag)
+{
+	//gy_int32 iTemp;
+	std::string absFileName;
+	std::wstring abswFileName;
+
+	int fileAttri = 0;
+	if (iFlag < 1)
+	{
+		printf("FUNCTION: %s, LINE: %d, iFlag = %d\n", __FUNCTION__, __LINE__, iFlag);
+		return false;
+	}
+	absFileName = Global::RelativePathToAbsPath(fileName);
+	abswFileName = Global::StringToWString(absFileName);
+	fileAttri = GetFileAttributesW(abswFileName.c_str());
+	if(fileAttri == -1)
+	{
+		int iError = GetLastError();
+		printf("FUNCTION: %s, LINE: %d, iError = %d\n", __FUNCTION__, __LINE__, iError);
+		return false;
+	}
+
+	if (iFlag == 0x0400)
+	{
+		fileAttri |= 0x0001;
+	}
+	if (SetFileAttributesW(abswFileName.c_str(), fileAttri) != 0)
+	{
+		return true;
+	}
+	int iError = GetLastError();
+	printf("FUNCTION: %s, LINE: %d, iError = %d\n", __FUNCTION__, __LINE__, iError);
+	return false;
+}
+#endif
 
 ::testing::AssertionResult IsError(SQLError error) {
   if (error.number() != ::utils::dbms::OK) {
@@ -82,7 +123,11 @@ TEST(SQLDatabaseTest, OpenCloseFile_OpenAndCloseSpecifiedDB_ActsWithoutError) {
   //assert
   EXPECT_FALSE(IsError(db.LastError()));
 
+#ifdef OS_WINCE
+  file_system::DeleteFileWindows("test-database.sqlite");
+#else
   remove("test-database.sqlite");
+#endif
 }
 
 TEST(SQLDatabaseTest, OpenDBTwice_NoError) {
@@ -213,14 +258,25 @@ TEST(SQLDatabaseTest, IsReadWrite_FirstOpenDBIsRWSecondIsNot) {
   ASSERT_TRUE(db.Open());
   EXPECT_TRUE(db.IsReadWrite());
   db.Close();
+#if defined(OS_WIN32)
+  chmod("test-database.sqlite", 0x00400);
+#elif defined(OS_WINCE)
+  // TODO:
+  // chmod("test-database.sqlite", 0x00400);
+  chmod("test-database.sqlite", 0x00400);
+#else
   chmod("test-database.sqlite", S_IRUSR);
-
+#endif
   //assert
   ASSERT_TRUE(db.Open());
   EXPECT_FALSE(db.IsReadWrite());
 
   db.Close();
+#ifdef OS_WINCE
+  file_system::DeleteFileWindows("test-database.sqlite");
+#else
   remove("test-database.sqlite");
+#endif
 }
 
 }  // namespace dbms

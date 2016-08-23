@@ -34,14 +34,20 @@ include_directories(
   ${COMPONENTS_DIR}/utils/include/
   ${COMPONENTS_DIR}/protocol_handler/include/
   ${COMPONENTS_DIR}/connection_handler/include/
+  ${COMPONENTS_DIR}/resumption/include
   ${COMPONENTS_DIR}/config_profile/include/
+  ${CMAKE_SOURCE_DIR}/src/3rd_party-static/jsoncpp/include
   ${LOG4CXX_INCLUDE_DIRECTORY}
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	include_directories (
-		${CMAKE_SOURCE_DIR}/include/win32
-	)
+    include_directories(
+      ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+    )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "WindowsCE")
+    include_directories(
+      ${CMAKE_SOURCE_DIR}/src/3rd_party-static/pthread-win32-2.9.1
+    )
 endif()
 
 set(SOURCES
@@ -49,6 +55,7 @@ set(SOURCES
     ${COMPONENTS_DIR}/protocol_handler/src/protocol_handler_impl.cc
     ${COMPONENTS_DIR}/protocol_handler/src/protocol_packet.cc
     ${COMPONENTS_DIR}/protocol_handler/src/protocol_payload.cc
+    ${COMPONENTS_DIR}/protocol_handler/src/multiframe_builder.cc
 )
 
 set(LIBRARIES
@@ -61,8 +68,15 @@ foreach(dir ${dirs})
   message(STATUS "libraries='${dir}'")
 endforeach()
 
+if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+  file (GLOB inc ${COMPONENTS_DIR}/protocol_handler/include/protocol_handler/*.h)
+  string( REPLACE / \\ group ${inc} )
+  source_group("Header Files" FILES ${inc} )
+  add_library(ProtocolHandler ${inc} ${SOURCES})
+else()
+  add_library(ProtocolHandler ${SOURCES})
+endif()
 
-add_library(ProtocolHandler ${SOURCES})
 target_link_libraries(ProtocolHandler ${LIBRARIES})
 
 if(BUILD_TESTS)

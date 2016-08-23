@@ -39,7 +39,6 @@
 #endif
 #include "logger.h"
 
-
 // A macro to set some action for variable to avoid "unused variable" warning
 #define UNUSED(x) (void)x;
 // A macro to disallow the copy constructor and operator= functions
@@ -59,8 +58,11 @@
 #define FRIEND_DELETER_DESTRUCTOR(TypeName) \
   friend utils::deleters::Deleter<TypeName>::~Deleter()
 
+#ifndef ASSERT
+#define __DBGAPI_H__
 #ifdef DEBUG
   #define ASSERT(condition) \
+    FLUSH_LOGGER(); \
     do { \
       DEINIT_LOGGER(); \
       assert(condition); \
@@ -70,10 +72,11 @@
     fprintf(stderr, "Failed condition \"" #condition "\" [%s:%d][%s]\n\n", \
                     __FILE__, __LINE__, __FUNCTION__)
 #endif
+#endif
 
 #define DCHECK(condition) \
   if (!(condition)) { \
-    CREATE_LOGGERPTR_LOCAL(logger_, "assert"); \
+    CREATE_LOGGERPTR_LOCAL(logger_, "Utils"); \
     LOG4CXX_FATAL(logger_,  "DCHECK failed with \"" << #condition \
        << "\" [" << __FUNCTION__ << "][" << __FILE__ << ':' << __LINE__ << ']'); \
     ASSERT((condition)); \
@@ -83,34 +86,27 @@
  * Will cauch assert on debug version,
  * Will return return_value in release build
  */
-#ifdef OS_WIN32
-#define DCHECK_OR_RETURN(condition, return_value)
-#else
 #define DCHECK_OR_RETURN(condition, return_value) \
   if (!(condition)) { \
-    CREATE_LOGGERPTR_LOCAL(logger_, "assert"); \
+    CREATE_LOGGERPTR_LOCAL(logger_, "Utils"); \
     LOG4CXX_FATAL(logger_,  "DCHECK failed with \"" << #condition \
-       << "\" [" << __FUNCTION__ << "][" << __FILE__ << ':' << __LINE__ << ']' ); \
+       << "\" [" << __FUNCTION__ << "][" << __FILE__ << ':' << __LINE__ << ']'); \
     ASSERT((condition)); \
     return (return_value); \
   }
-#endif
 /*
  * Will cauch assert on debug version,
  * Will return return_value in release build
  */
-#ifdef OS_WIN32
-#define DCHECK_OR_RETURN_VOID(condition)
-#else
 #define DCHECK_OR_RETURN_VOID(condition) \
   if (!(condition)) { \
-    CREATE_LOGGERPTR_LOCAL(logger_, "assert"); \
+    CREATE_LOGGERPTR_LOCAL(logger_, "Utils"); \
     LOG4CXX_FATAL(logger_,  "DCHECK failed with \"" << #condition \
-       << "\" [" << __FUNCTION__ << "][" << __FILE__ << ':' << __LINE__ << ']' ); \
+       << "\" [" << __FUNCTION__ << "][" << __FILE__ << ':' << __LINE__ << ']'); \
     ASSERT((condition)); \
     return ; \
   }
-#endif
+
 
 #define NOTREACHED() DCHECK(!"Unreachable code")
 
@@ -123,7 +119,7 @@
 #define OVERRIDE
 #define FINAL
 #endif
-#ifdef OS_WIN32
+#if defined(OS_WIN32) || defined(OS_WINCE)
 #ifndef snprintf
 #define snprintf _snprintf
 #endif

@@ -33,7 +33,11 @@
 #ifndef SRC_COMPONENTS_APPLICATION_MANAGER_INCLUDE_APPLICATION_MANAGER_STATE_CONTEXT_H_
 #define SRC_COMPONENTS_APPLICATION_MANAGER_INCLUDE_APPLICATION_MANAGER_STATE_CONTEXT_H_
 
+#ifdef OS_WINCE
+#include <stdint.h>
+#else
 #include <cstdint>
+#endif
 
 namespace application_manager {
 /**

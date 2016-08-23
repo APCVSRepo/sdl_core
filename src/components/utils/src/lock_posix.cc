@@ -136,7 +136,7 @@ void Lock::Init(bool is_recursive) {
 
   if (status != 0) {
     LOG4CXX_FATAL(logger_, "Failed to initialize mutex. "
-                  << std::strerror(status));
+                  << strerror(status));
     DCHECK(status != 0);
   }
 }
