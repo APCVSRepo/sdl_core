@@ -43,8 +43,66 @@
 
 #include "utils/logger.h"
 
+#define TOUCH_EVENT_TEST_SUPPORT
+
+#ifdef TOUCH_EVENT_TEST_SUPPORT
+#include "protocol_handler/protocol_payload.h"
+#include "protocol_handler/protocol_packet.h"
+#include "protocol/service_type.h"
+#include "utils/bitstream.h"
+#include "utils/debug.h"
+#include "json/json.h"
+
+
+#include <sys/time.h>
+#include <time.h>
+
+
+
+#define GET_TIMESPEC_DIFF_MS(otv, ntv)      ((ntv.tv_nsec >= otv.tv_nsec)?	\
+                                            (((ntv.tv_sec-otv.tv_sec)*1000)+((ntv.tv_nsec-otv.tv_nsec)/1000000)):	\
+                                            (((ntv.tv_sec-otv.tv_sec-1)*1000)+(((ntv.tv_nsec+1000000000)-otv.tv_nsec)/1000000)))
+                                                   
+
+#define GET_LOCAL_TIME_MS(ntv)				((ntv.tv_sec*1000) +(ntv.tv_nsec/1000000))
+#define	TOUCH_EVENT_INFO_MAX_NUMBER		    	2048	
+#define TOUCH_EVENT_TYPE_BEGIN				0
+#define TOUCH_EVENT_TYPE_MOVE				1
+#define TOUCH_EVENT_TYPE_END				2
+#define	TOUCH_EVENT_TEST_TIME_MS			(1*1000)
+
+typedef struct 
+{
+	uint32_t	StartTime;
+	uint32_t	EndTime;
+	uint32_t	sn;
+	int		type;
+}TIME_INFO;
+
+typedef struct
+{
+	int 		nMinDiffTime;
+	int	 	nMaxDiffTime;
+	int	 	nAvgDiffTime;
+	int 	 	nBeginType;
+	int 	 	nMoveType;
+	int 	  	nEndType;
+	int		nLen;
+	TIME_INFO	info[TOUCH_EVENT_INFO_MAX_NUMBER];
+}TOUCH_EVENT_TEST_INFO;
+
+//bool TouchEventTimeInfo(uint32_t sn, uint32_t timestamp, const std::string &type);
+//bool TouchEventTimeParse(const std::string &message)
+//bool TouchEventTest(protocol_handler::RawMessagePtr rawMessage);
+#endif
+
 namespace transport_manager {
 namespace transport_adapter {
+
+
+bool TouchEventTimeInfo(uint32_t sn, uint32_t timestamp, const std::string &type);
+bool TouchEventTimeParse(const std::string &message);
+bool TouchEventTest(protocol_handler::RawMessagePtr rawMessage);
 
 CREATE_LOGGERPTR_GLOBAL(logger_, "TransportManager")
 
@@ -175,6 +233,11 @@ bool UsbConnection::PostOutTransfer() {
     LOG4CXX_TRACE(logger_, "exit with FALSE. Condition: 0 == out_transfer_");
     return false;
   }
+
+#ifdef TOUCH_EVENT_TEST_SUPPORT
+  TouchEventTest(current_out_message_);
+#endif
+
   libusb_fill_bulk_transfer(out_transfer_,
                             device_handle_,
                             out_endpoint_,
@@ -373,5 +436,206 @@ bool UsbConnection::FindEndpoints() {
   LOG4CXX_TRACE(logger_, "exit with " << (result ? "TRUE" : "FALSE"));
   return result;
 }
+
+#ifdef TOUCH_EVENT_TEST_SUPPORT
+bool TouchEventTimeInfo(uint32_t sn, uint32_t timestamp, const std::string &type)
+{
+	static TOUCH_EVENT_TEST_INFO testInfo;
+	static bool flag = false;
+	static struct timespec StartTime;
+	int diff, sum;
+	struct timespec currentTime;
+	
+	//SDL_DEBUG("Enter ........................");
+	
+	if(flag == false)
+	{
+		memset((char *)&testInfo, 0, sizeof(TOUCH_EVENT_TEST_INFO));
+		flag = true;
+		clock_gettime(CLOCK_REALTIME, &StartTime);
+	}
+
+	clock_gettime(CLOCK_REALTIME, &currentTime);
+
+	
+	testInfo.info[testInfo.nLen].StartTime = timestamp;
+	testInfo.info[testInfo.nLen].EndTime = GET_LOCAL_TIME_MS(currentTime) & 0x7fffffff; 
+	testInfo.info[testInfo.nLen].sn = sn;
+	//SDL_DEBUG("time(%u, %u)", testInfo.info[testInfo.nLen].StartTime, testInfo.info[testInfo.nLen].EndTime);
+
+	if(type.compare("BEGIN") == 0)
+	{
+		testInfo.info[testInfo.nLen].type = TOUCH_EVENT_TYPE_BEGIN;
+	}
+	else if(type.compare("MOVE") == 0)
+	{
+		testInfo.info[testInfo.nLen].type = TOUCH_EVENT_TYPE_MOVE;
+	}
+	else if(type.compare("END") == 0)
+	{
+		testInfo.info[testInfo.nLen].type = TOUCH_EVENT_TYPE_END;
+	}
+	else 
+	{
+		SDL_DEBUG("type is error (%s)", type.c_str());
+		return false;
+	}
+	
+	testInfo.nLen++;
+
+	if(testInfo.nLen >= TOUCH_EVENT_INFO_MAX_NUMBER)
+	{
+		SDL_DEBUG("node number >= %d", TOUCH_EVENT_INFO_MAX_NUMBER);
+		flag = false;	
+	}
+
+	if(GET_TIMESPEC_DIFF_MS(StartTime, currentTime) >= TOUCH_EVENT_TEST_TIME_MS)
+	{
+		SDL_DEBUG("timeout !!!");
+		flag = false;
+	}
+
+	if(flag == false)
+	{
+		sum = 0;
+		for(int i = 0; i < testInfo.nLen; i++)
+		{
+			diff = testInfo.info[i].EndTime - testInfo.info[i].StartTime;
+
+			if(i == 0)
+			{
+				testInfo.nMinDiffTime = testInfo.nMaxDiffTime = diff;
+			}
+			else
+			{
+				if(diff < testInfo.nMinDiffTime)
+				{
+					testInfo.nMinDiffTime = diff;
+				}
+				else if(diff > testInfo.nMaxDiffTime)
+				{
+					testInfo.nMaxDiffTime = diff;
+				}
+			}
+			sum += diff;
+
+			switch(testInfo.info[i].type)
+			{
+				case TOUCH_EVENT_TYPE_BEGIN:
+						testInfo.nBeginType++;
+						break;
+						
+				case TOUCH_EVENT_TYPE_MOVE:
+						testInfo.nMoveType++;
+						break;
+						
+				case TOUCH_EVENT_TYPE_END:
+						testInfo.nEndType++;
+						break;
+				default:
+						break;
+			}
+
+	//		SDL_DEBUG("Touch Event Test: type=%d, sn=%d, diffTimeMS=%d", testInfo.info[i].type, testInfo.info[i].sn, diff);
+		}
+
+		testInfo.nAvgDiffTime = sum / testInfo.nLen;
+		SDL_DEBUG("Touch Event Test(sum=%d): nMinDiffTime=%d, nMaxDiffTime=%d, nAvgDiffTime=%d, nBeginType=%d, nMoveType=%d, nEndType=%d",
+						testInfo.nLen, testInfo.nMinDiffTime, testInfo.nMaxDiffTime, testInfo.nAvgDiffTime, testInfo.nBeginType, testInfo.nMoveType, testInfo.nEndType);
+	}
+	
+	return true;
+}
+
+bool TouchEventTimeParse(const std::string &message)
+{       
+        Json::Reader reader;
+        Json::Value root;
+        std::string time;
+        
+        //SDL_DEBUG("Enter ........................");
+        
+        if (reader.parse(message, root) == false)
+        {       
+                SDL_DEBUG("json format is error!");
+                return false;
+        }
+        
+        std::string stype = root["type"].asString();
+        
+        const Json::Value arrayObj = root["event"];
+        
+        //SDL_DEBUG("type=%s", stype.c_str());
+//      return 0;
+        
+        if(arrayObj.size() != 1)
+        {       
+                //SDL_DEBUG("event value format is error! (%zd)", arrayObj.size());
+                return false;
+        }
+        
+        uint32_t timestamp = 0;
+	uint32_t sn = 0;
+        
+        for (uint32_t i=0; i<arrayObj.size(); i++)
+        {       
+                //int n = arrayObj[i]["time"].size();
+                timestamp = arrayObj[i]["time"][0].asUInt();
+                //SDL_DEBUG("timestamp=%u", timestamp);
+		sn  = arrayObj[i]["sn"][0].asUInt();
+                break;
+        }
+        
+        if(TouchEventTimeInfo(sn, timestamp, stype) == false)
+        {       
+                SDL_DEBUG("TouchEventTimeInfo was failed !!!");
+                return false;
+        }
+
+        return true;
+}
+
+bool TouchEventTest(protocol_handler::RawMessagePtr rawMessage)
+{       
+        //SDL_DEBUG("Enter ........................");
+        if(rawMessage->data() == NULL
+                || rawMessage->data_size() <= 0)
+        {       
+                SDL_DEBUG("data is error");
+                return false;
+        }
+        
+        if(rawMessage->protocol_version() != protocol_handler::MajorProtocolVersion::PROTOCOL_VERSION_4)
+        {       
+                //SDL_DEBUG("can't handle protocol version(%d)", rawMessage->protocol_version());
+                return false;
+        }
+        
+        if(rawMessage->service_type() != protocol_handler::kRpc)
+        {       
+                //SDL_DEBUG("message is not Rpc service type!");
+                return false;
+        }
+        
+        protocol_handler::ProtocolPayloadV2 payload;
+        
+        protocol_handler::ProtocolPacket packet(rawMessage->connection_key());
+        packet.deserializePacket(rawMessage->data(), rawMessage->data_size());
+        utils::BitStream message_bytestream(packet.data(), packet.data_size());
+        protocol_handler::Extract(&message_bytestream, &payload, packet.data_size());
+        
+        //SDL_DEBUG("payload >>>>>>>>>>>>>> json=%s", payload.json.c_str());
+        
+        if(TouchEventTimeParse(payload.json) == false )
+        {       
+//                SDL_DEBUG("TouchEventTimeParse was failed! ");
+                return false;
+        }
+        
+        return true;
+
+}
+#endif
+
 }  // namespace transport_adapter
 }  // namespace transport_manager

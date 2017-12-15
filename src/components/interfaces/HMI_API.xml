@@ -1805,6 +1805,10 @@
   </param>
   <param name="c" type="Common.TouchCoord" mandatory="true" array="true" minsize="1" maxsize="1000">
   </param>
+  <param name="time" type="Integer" mandatory="true" array="true" minvalue="0" maxvalue="2147483647" minsize="1" maxsize="1000"> 
+  </param>
+  <param name="sn" type="Integer" mandatory="true" array="true" minvalue="0" maxvalue="2147483647" minsize="1" maxsize="1000">
+  </param>
 </struct>
 
 <struct name="PresetBankCapabilities">
