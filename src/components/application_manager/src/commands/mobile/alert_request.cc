@@ -349,6 +349,26 @@ void AlertRequest::SendAlertRequest(int32_t app_id) {
     msg_params[strings::progress_indicator] =
         (*message_)[strings::msg_params][strings::progress_indicator];
   }
+  // alertIcon
+  mobile_apis::Result::eType verification_result = mobile_apis::Result::SUCCESS;
+
+  if ((*message_)[strings::msg_params].keyExists(strings::alert_icon)) {
+    verification_result = MessageHelper::VerifyImage(
+          (*message_)[strings::msg_params][strings::alert_icon],
+          app,
+          application_manager_);
+      if (mobile_apis::Result::SUCCESS == verification_result) {
+           LOG4CXX_ERROR(logger_, "alert icon verification SUCCESS .");
+    msg_params[strings::alert_icon] =
+        (*message_)[strings::msg_params][strings::alert_icon];
+      }
+      else
+      {
+          LOG4CXX_ERROR(logger_, "alert icon verification FAIL .");
+      }
+  }
+
+
 
   // PASA Alert type
   msg_params[strings::alert_type] = hmi_apis::Common_AlertType::UI;

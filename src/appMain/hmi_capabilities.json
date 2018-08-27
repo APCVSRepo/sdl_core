@@ -205,6 +205,14 @@
                         "resolutionHeight": 35
                     }
                 },
+                 {
+                    "name": "alertIcon",
+                    "imageTypeSupported": [],
+                    "imageResolution": {
+                        "resolutionWidth": 35,
+                        "resolutionHeight": 35
+                    }
+                },
                 {
                     "name": "cmdIcon",
                     "imageResolution": {

@@ -783,6 +783,10 @@
         <element name="menuIcon">
             <description>The image field for the menu icon in SetGlobalProperties</description>
         </element>
+
+	<element name="alertIcon">
+            <description>The image field for Alert</description>
+        </element>
         
         <element name="cmdIcon">
             <description>The image field for AddCommand</description>
@@ -3737,6 +3741,13 @@
             <description>
                 App defined SoftButtons.
                 If omitted on supported displays, the displayed alert shall not have any SoftButtons.
+            </description>
+        </param>
+
+	<param name="alertIcon" type="Image" mandatory="false" >
+     	    <description>
+               Image struct determining whether static or dynamic icon.
+               If omitted on supported displays, no (or the default if applicable) icon should be displayed.
             </description>
         </param>
         

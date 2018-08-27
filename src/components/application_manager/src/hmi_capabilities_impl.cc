@@ -278,6 +278,8 @@ void InitCapabilities() {
   image_field_name_enum.insert(std::make_pair(
       std::string("menuIcon"), hmi_apis::Common_ImageFieldName::menuIcon));
   image_field_name_enum.insert(std::make_pair(
+      std::string("alertIcon"),hmi_apis::Common_ImageFieldName::alertIcon));
+  image_field_name_enum.insert(std::make_pair(
       std::string("cmdIcon"), hmi_apis::Common_ImageFieldName::cmdIcon));
   image_field_name_enum.insert(std::make_pair(
       std::string("appIcon"), hmi_apis::Common_ImageFieldName::appIcon));

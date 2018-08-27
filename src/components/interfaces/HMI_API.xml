@@ -618,6 +618,9 @@
   <element name="menuIcon">
     <description>The image field for the menu icon in SetGlobalProperties</description>
   </element>
+  <element name="alertIcon">
+    <description>The image field for the alert</description>
+  </element>
   <element name="cmdIcon">
     <description>The image field for AddCommand</description>
   </element>
@@ -3500,6 +3503,10 @@
     </param>
     <param name="appID" type="Integer" mandatory="true">
       <description>ID of application requested this RPC.</description>
+    </param>
+    <param name="alertIcon" type="Common.Image" mandatory="false" >
+     <description>Image to be displayed for the corresponding alert. See Image. </description>
+     <description>If omitted, no (or the default if applicable) icon should be displayed.</description>
     </param>
   </function>
   <function name="Alert" messagetype="response">
