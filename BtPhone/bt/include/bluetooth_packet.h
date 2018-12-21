@@ -4,8 +4,8 @@
  * 
  */
  
-#ifndef BLUETOOTH_PACKET_H
-#define BLUETOOTH_PACKET_H
+#ifndef BLUETOOTH_PACKET
+#define BLUETOOTH_PACKET
  
 
 #include <stdint.h>
