@@ -5,11 +5,12 @@
  */
 
 
-#include "include/bluetooth_channel.h"
+#include "bluetooth_channel.h"
 
 
 //private constructor
 bluetooth_channel::bluetooth_channel(double sample_rate, double center_freq, double squelch_threshold)
+  : bluetooth_multi_block(sample_rate, center_freq, squelch_threshold)
 {
 	set_symbol_history(68);
 	pending_packet = 0;

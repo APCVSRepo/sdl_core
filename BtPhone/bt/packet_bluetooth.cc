@@ -11,6 +11,7 @@
 
 extern int pack_comp_bluetooth;
 
+
 static int debugno = 0;
 
 int kis_bluetooth_dissector(CHAINCALL_PARMS) {
@@ -33,7 +34,7 @@ int kis_bluetooth_dissector(CHAINCALL_PARMS) {
 	debugno++;
 
 	if (chunk->length < 14) {
-		_MSG("Short Bluetooth frame!", MSGFLAG_ERROR);
+		_MSG("Short Bluetooth  frame!", MSGFLAG_ERROR);
 		in_pack->error = 1;
 		return 0;
 	}
